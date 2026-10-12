@@ -9,7 +9,7 @@ function app_config(): array
     $base = require __DIR__ . '/config.sample.php';
     $local = is_file(__DIR__ . '/config.local.php') ? require __DIR__ . '/config.local.php' : [];
     // Для проверок из командной строки базу можно подменить переменной окружения
-    if (getenv('HOTELAPP_DB')) $local['db']['name'] = getenv('HOTELAPP_DB');
+    if (getenv('HOTELS_DB')) $local['db']['name'] = getenv('HOTELS_DB');
     $cfg = array_replace_recursive($base, is_array($local) ? $local : []);
     return $cfg;
 }
