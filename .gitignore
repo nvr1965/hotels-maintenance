@@ -1,0 +1,8 @@
+backend/core/config.local.php
+backend/core/secrets.php
+backend/core/push_keys.php
+backend/core/.openrouter_free_vision_models.json
+backend/sessions/*
+!backend/sessions/.htaccess
+uploads/
+node_modules/

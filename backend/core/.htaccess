@@ -1,0 +1,8 @@
+# Служебные файлы (ключи API, подключение к БД) подключаются только через require из backend/api.
+# Прямой доступ из браузера запрещён.
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Deny from all
+</IfModule>
