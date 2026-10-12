@@ -60,7 +60,7 @@ function translate_gemini(array $texts, string $from, string $to): array
     $keys = array_keys($texts);
     $prompt = "You translate short texts for a hotel maintenance app (rooms, repairs, equipment, meters). "
         . "Translate each item of the JSON array " . ($from !== '' ? 'from ' . translate_lang_name($from) . ' ' : '')
-        . "into " . translate_lang_name($to) . ". Keep numbers, room numbers, %s placeholders and emoji as they are. "
+        . "into " . translate_lang_name($to) . ". Keep numbers, room numbers, placeholders like {1}, {app}, %s and emoji exactly as they are. "
         . "Answer with a JSON array of strings only, same length and order.\n\n"
         . json_encode(array_values($texts), JSON_UNESCAPED_UNICODE);
     $body = json_encode([

@@ -47,7 +47,7 @@ export default function BossLinks() {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
                 <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Для кого (например, Начальник)"
                     style={{ flex: '1 1 220px', padding: '9px 10px', border: '1px solid #d9cec5', fontSize: '16px', minWidth: 0 }} />
-                <button type="button" onClick={() => call({ action: 'create', label, lang: 'he' })}
+                <button type="button" onClick={() => call({ action: 'create', label })}
                     style={{ ...btn, background: 'var(--brand-button, #844128)', color: '#fff', border: 'none' }}>Создать ссылку</button>
             </div>
             {error && <div style={{ color: '#c43d3d', marginBottom: '8px' }}>{error}</div>}

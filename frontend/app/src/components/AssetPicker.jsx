@@ -1,18 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { uiText } from '../i18n';
 
 // Пошаговый выбор объекта: здание → этаж → объекты/номера → выпадающий список.
 // locations приходят из get_assets.php: { id, name, short, building, floor, is_room }
 
-const ui = {
-    ru: { building: 'Здание', floor: 'Этаж', kind: 'Что выбираем', objects: '🛠 Объекты', rooms: '🛏 Номера',
-          room: 'Номер', none: 'не указано', pick_object: '-- Выберите объект --', pick_room: '-- Выберите номер --', empty: 'Здесь ничего нет' },
-    en: { building: 'Building', floor: 'Floor', kind: 'What', objects: '🛠 Objects', rooms: '🛏 Rooms',
-          room: 'Room', none: 'not set', pick_object: '-- Select object --', pick_room: '-- Select room --', empty: 'Nothing here' },
-    he: { building: 'בניין', floor: 'קומה', kind: 'מה לבחור', objects: '🛠 מתקנים', rooms: '🛏 חדרים',
-          room: 'חדר', none: 'לא צוין', pick_object: '-- בחר מתקן --', pick_room: '-- בחר חדר --', empty: 'אין כאן כלום' },
-    ar: { building: 'مبنى', floor: 'طابق', kind: 'ماذا تختار', objects: '🛠 المرافق', rooms: '🛏 الغرف',
-          room: 'غرفة', none: 'غير محدد', pick_object: '-- اختر المرفق --', pick_room: '-- اختر الغرفة --', empty: 'لا يوجد شيء هنا' }
-};
 
 // Естественная сортировка: «2» < «10», «-1» < «0», буквы по алфавиту
 const naturalCompare = (a, b) => {
@@ -37,7 +28,7 @@ const chipStyle = (active, disabled) => ({
 const stepLabel = { display: 'block', margin: '0 0 8px', fontWeight: 'bold', color: '#5a4f48', fontSize: '16px' };
 
 export default function AssetPicker({ locations, value, onChange, lang }) {
-    const t = ui[lang] || ui.ru;
+    const t = uiText('asset_picker', lang);
     const [building, setBuilding] = useState(null);
     const [floor, setFloor] = useState(null);
     const [kind, setKind] = useState(null); // 'room' | 'object'

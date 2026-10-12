@@ -4,15 +4,10 @@ import ManagerDashboard from './pages/ManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import { BrandLogo, BrandEmblem } from './components/BrandLogo';
 import { disablePush } from './notify/push';
-import { LANGS, readCachedUser, cacheUser, clearCachedUser, fetchMe, login, logout, saveLang, installUnauthorizedHook, dropLangParam } from './auth';
-import { setBrand, useBrand, hotelTitle, loadPublicBrand, switchHotel } from './brand';
+import { readCachedUser, cacheUser, clearCachedUser, fetchMe, login, logout, saveLang, installUnauthorizedHook, dropLangParam } from './auth';
+import { setBrand, getBrand, useBrand, hotelTitle, loadPublicBrand, switchHotel } from './brand';
+import { uiText, dirOf, languageList, loadUi, useUi } from './i18n';
 
-const loginUi = {
-    ru: { title: 'Вход в систему', login: 'Логин (Имя)', pass: 'Пароль', btn: 'Войти', remember: 'Запомнить меня', error: 'Неверный логин или пароль' },
-    en: { title: 'System Login', login: 'Username', pass: 'Password', btn: 'Login', remember: 'Remember me', error: 'Invalid login or password' },
-    he: { title: 'התחברות למערכת', login: 'שם משתמש', pass: 'סיסמה', btn: 'כניסה', remember: 'זכור אותי', error: 'שם משתמש או סיסמה שגויים' },
-    ar: { title: 'تسجيل الدخول', login: 'اسم المستخدم', pass: 'كلمة المرور', btn: 'دخول', remember: 'تذكرني', error: 'خطأ في اسم المستخدم أو كلمة المرور' }
-};
 
 // Телефон/планшет или приложение, установленное на экран (PWA)
 function isPhoneOrInstalledApp() {
@@ -27,12 +22,12 @@ function isPhoneOrInstalledApp() {
 
 // Окно отеля с выбором языка: заголовки на языках отеля из его настроек.
 // Показывается, пока никто не вошёл (в том числе после выхода из приложения).
-const hotelLangs = (hotel) => (hotel?.languages?.length ? hotel.languages : LANGS).filter((l) => LANGS.includes(l));
+const hotelLangs = (hotel) => (hotel?.languages?.length ? hotel.languages : languageList().map((l) => l.code));
 
 function WelcomeScreen({ onPick }) {
     const { hotel } = useBrand();
     const WELCOME = hotelLangs(hotel).map((lang) => ({
-        lang, dir: ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr', text: hotelTitle(hotel, lang) || lang.toUpperCase()
+        lang, dir: dirOf(lang), text: hotelTitle(hotel, lang) || lang.toUpperCase()
     }));
     return (
         <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box', background: 'var(--brand-primary, #371f20)', color: 'var(--brand-text, #f9edd3)', fontFamily: '-apple-system, sans-serif' }}>
@@ -53,12 +48,13 @@ function WelcomeScreen({ onPick }) {
 
 export default function App() {
     const brand = useBrand();
+    useUi(); // перерисовать, когда придут тексты интерфейса на выбранном языке
     const [user, setUser] = useState(null);
     const [view, setView] = useState('main'); // 'main' или 'admin'
     // Что показывать без пользователя: 'checking' (спрашиваем сервер) | 'welcome' | 'login'
     const [screen, setScreen] = useState('checking');
     
-    const [loginLang, setLoginLang] = useState('ru'); 
+    const [loginLang, setLoginLang] = useState(() => getBrand().hotel?.default_lang || 'en');
     // На телефоне и в установленном приложении вход запоминается всегда (галочки нет),
     // на компьютере галочка есть и отмечена по умолчанию
     const [rememberMe, setRememberMe] = useState(true);
@@ -79,7 +75,7 @@ export default function App() {
 
     useEffect(() => {
         const urlLang = new URLSearchParams(window.location.search).get('lang');
-        const pickedLang = LANGS.includes(urlLang) ? urlLang : null;
+        const pickedLang = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(urlLang || '') ? urlLang : null;
         let cancelled = false;
 
         (async () => {
@@ -102,7 +98,7 @@ export default function App() {
                     saveLang(pickedLang);
                 }
                 cacheUser(u);
-                setLoginLang(u.lang || 'ru');
+                setLoginLang(u.lang || 'en');
                 setUser(u);
                 dropLangParam();
                 return;
@@ -112,7 +108,7 @@ export default function App() {
                 // Нет связи с сервером: показываем последнего запомненного, данные подтянутся с сетью
                 const cached = readCachedUser();
                 if (cached) {
-                    setLoginLang(cached.lang || 'ru');
+                    setLoginLang(cached.lang || 'en');
                     setUser(cached);
                     return;
                 }
@@ -135,6 +131,11 @@ export default function App() {
 
         return () => { cancelled = true; };
     }, []);
+
+    // Тексты интерфейса на языке вошедшего (или выбранном на экране входа): сохранённые показываются сразу,
+    // свежие приходят с сервера (новый язык сервер переводит сам)
+    const uiLang = user?.lang || loginLang;
+    useEffect(() => { loadUi(uiLang); }, [uiLang]);
 
     // Сервер перестал узнавать пользователя (истекла сессия, вход отозван) — обратно к окну отеля
     useEffect(() => installUnauthorizedHook(() => showWelcome()), []);
@@ -173,7 +174,7 @@ export default function App() {
                 setView('main');
                 dropLangParam();
             } else {
-                setLoginError(loginUi[loginLang].error);
+                setLoginError(uiText('login', loginLang).error);
             }
         } catch (error) {
             console.error('Login error:', error);
@@ -195,9 +196,9 @@ export default function App() {
 
     // ФОРМА ВХОДА
     if (!user) {
-        const text = loginUi[loginLang];
+        const text = uiText('login', loginLang);
         const loginLangs = hotelLangs(brand.hotel);
-        const dir = ['he', 'ar'].includes(loginLang) ? 'rtl' : 'ltr';
+        const dir = dirOf(loginLang);
 
         return (
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f7f1eb', direction: dir }}>

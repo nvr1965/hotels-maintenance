@@ -1,47 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import MeterChart, { fmtNum } from './MeterChart';
+import { uiText } from '../i18n';
 
 // Отчёт начальника по счётчикам (регламентные задачи с распознаванием):
 // графики показаний и расхода за любой период, итоги, выгрузка в Excel (только на компьютере).
 
-const T = {
-    ru: {
-        disabled: 'Ссылка отключена. Попросите новую.',
-        from: 'С', to: 'По', p7: '7 дней', p30: '30 дней', pMonth: 'Этот месяц', pPrev: 'Прошлый месяц', p90: '3 месяца', pYear: 'Год',
-        excel: '📊 Скачать Excel с графиками', loading: 'Загрузка…', error: 'Не удалось загрузить отчёт', none: 'Нет счётчиков',
-        empty: 'За этот период показаний нет', last: 'Последнее', cons: 'Расход за период', avg: 'В среднем в сутки',
-        used: 'Израсходовано', refills: 'Пополнений', readings: 'Показаний', anomalies: 'Сомнительных',
-        perDay: 'расход в сутки', photo: 'фото', anomaly: 'меньше прошлого — проверьте фото', table: 'Все показания',
-        date: 'Дата', value: 'Показание', delta: 'Изменение', hint: 'Нажмите на точку графика, чтобы увидеть значение и фото',
-    },
-    en: {
-        disabled: 'This link is disabled. Ask for a new one.',
-        from: 'From', to: 'To', p7: '7 days', p30: '30 days', pMonth: 'This month', pPrev: 'Last month', p90: '3 months', pYear: 'Year',
-        excel: '📊 Download Excel with charts', loading: 'Loading…', error: 'Could not load the report', none: 'No meters',
-        empty: 'No readings in this period', last: 'Last', cons: 'Consumption', avg: 'Average per day',
-        used: 'Used', refills: 'Refills', readings: 'Readings', anomalies: 'Doubtful',
-        perDay: 'per day', photo: 'photo', anomaly: 'lower than before — check the photo', table: 'All readings',
-        date: 'Date', value: 'Reading', delta: 'Change', hint: 'Tap a point to see its value and photo',
-    },
-    he: {
-        disabled: 'הקישור אינו פעיל. בקשו קישור חדש.',
-        from: 'מ-', to: 'עד', p7: '7 ימים', p30: '30 ימים', pMonth: 'החודש', pPrev: 'חודש קודם', p90: '3 חודשים', pYear: 'שנה',
-        excel: '📊 הורדת Excel עם גרפים', loading: 'טוען…', error: 'טעינת הדוח נכשלה', none: 'אין מונים',
-        empty: 'אין קריאות בתקופה זו', last: 'אחרונה', cons: 'צריכה בתקופה', avg: 'ממוצע ליום',
-        used: 'נוצל', refills: 'מילויים', readings: 'קריאות', anomalies: 'מפוקפקות',
-        perDay: 'ליום', photo: 'תמונה', anomaly: 'נמוך מהקודם — בדקו את התמונה', table: 'כל הקריאות',
-        date: 'תאריך', value: 'קריאה', delta: 'שינוי', hint: 'לחצו על נקודה כדי לראות ערך ותמונה',
-    },
-    ar: {
-        disabled: 'هذا الرابط غير فعال. اطلبوا رابطًا جديدًا.',
-        from: 'من', to: 'إلى', p7: '7 أيام', p30: '30 يومًا', pMonth: 'هذا الشهر', pPrev: 'الشهر الماضي', p90: '3 أشهر', pYear: 'سنة',
-        excel: '📊 تنزيل Excel مع الرسوم', loading: 'جارٍ التحميل…', error: 'تعذر تحميل التقرير', none: 'لا توجد عدادات',
-        empty: 'لا توجد قراءات في هذه الفترة', last: 'الأخيرة', cons: 'الاستهلاك', avg: 'المتوسط اليومي',
-        used: 'المستهلك', refills: 'التعبئات', readings: 'القراءات', anomalies: 'مشكوك فيها',
-        perDay: 'يوميًا', photo: 'صورة', anomaly: 'أقل من السابق — تحقق من الصورة', table: 'كل القراءات',
-        date: 'التاريخ', value: 'القراءة', delta: 'التغيير', hint: 'اضغط على نقطة لرؤية القيمة والصورة',
-    },
-};
 
 const COLORS = ['#844128', '#7a5a30', '#26875a', '#371f20'];
 
@@ -86,8 +49,8 @@ const chip = { display: 'flex', flexDirection: 'column', gap: '2px', padding: '1
 const chipLbl = { fontSize: '14px', color: '#6e635b' };
 const chipVal = { fontSize: '19px', fontWeight: 'bold', color: '#2b2320' };
 
-export default function MeterReport({ lang = 'ru', accessKey = '' }) {
-    const t = T[lang] || T.ru;
+export default function MeterReport({ lang = 'en', accessKey = '' }) {
+    const t = uiText('meter_report', lang);
     const isDesktop = useIsDesktop();
     const [preset, setPreset] = useState('p30');
     const [[from, to], setRange] = useState(() => presetRange('p30'));

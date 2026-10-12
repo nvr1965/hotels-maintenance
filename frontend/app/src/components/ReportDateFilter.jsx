@@ -1,17 +1,14 @@
 import { useState } from 'react';
+import { uiText, localeOf } from '../i18n';
+import { getBrand } from '../brand';
 
 // Выбор даты для отчётов руководителя: «Сегодня» | «Вчера» | «Дата» (один день) | «Период» (с … по …).
 // value = { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }; onChange вызывается с новым value, когда даты выбраны полностью.
 
-const T = {
-    ru: { today: 'Сегодня', yesterday: 'Вчера', day: 'Дата', range: 'Период', from: 'С', to: 'По', show: 'Показать', for_: 'За' },
-    en: { today: 'Today', yesterday: 'Yesterday', day: 'Date', range: 'Period', from: 'From', to: 'To', show: 'Show', for_: 'For' },
-    he: { today: 'היום', yesterday: 'אתמול', day: 'תאריך', range: 'תקופה', from: 'מ-', to: 'עד', show: 'הצג', for_: 'עבור' },
-    ar: { today: 'اليوم', yesterday: 'أمس', day: 'تاريخ', range: 'فترة', from: 'من', to: 'إلى', show: 'عرض', for_: 'عن' },
-};
 
 // «Сегодня» — по времени отеля
-export const hotelToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+// Сегодня по часам отеля (его часовой пояс из настроек)
+export const hotelToday = () => new Date().toLocaleDateString('en-CA', { timeZone: getBrand().hotel?.timezone || 'UTC' });
 export const shiftDate = (ymd, days) => {
     const d = new Date(ymd + 'T12:00:00Z');
     d.setUTCDate(d.getUTCDate() + days);
@@ -20,7 +17,7 @@ export const shiftDate = (ymd, days) => {
 export const fmtYmd = (ymd, lang) => {
     if (!ymd) return '';
     const d = new Date(ymd + 'T12:00:00Z');
-    return d.toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+    return d.toLocaleDateString(localeOf(lang), { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
 };
 
 const modeOf = (v) => {
@@ -35,8 +32,8 @@ const modeOf = (v) => {
 
 const inputStyle = { display: 'block', padding: '8px', borderRadius: '8px', border: '1px solid #d9cec5', fontSize: '15px', background: '#fff', color: '#2b2320' };
 
-export default function ReportDateFilter({ lang = 'ru', value, onChange, accent = '#844128', children }) {
-    const t = T[lang] || T.ru;
+export default function ReportDateFilter({ lang = 'en', value, onChange, accent = '#844128', children }) {
+    const t = uiText('date_filter', lang);
     const [mode, setMode] = useState(() => modeOf(value));
     const [draft, setDraft] = useState(value); // черновик периода, пока не нажали «Показать»
     const today = hotelToday();

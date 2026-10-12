@@ -2,19 +2,21 @@ import { BrandEmblem } from '../components/BrandLogo';
 import MeterReport from '../components/MeterReport';
 import { useEffect } from 'react';
 import { useHotel, setBrand, hotelTitle } from '../brand';
+import { isRtl, uiText, loadUi, useUi } from '../i18n';
 
-// Отдельная страница для начальника по ссылке /react/?meters=КЛЮЧ&lang=he:
+// Отдельная страница для начальника по ссылке /react/?meters=КЛЮЧ&lang=xx:
 // без входа, без меню — сразу отчёт по счётчикам. Ключ создаёт сисадмин в «📷 Счётчики».
 
-const TITLE = { ru: 'Отчёт по счётчикам', en: 'Meter report', he: 'דוח מונים', ar: 'تقرير العدادات' };
-
 export default function MeterBossPage({ accessKey, lang }) {
-    const rtl = lang === 'he' || lang === 'ar';
+    useUi();
+    useEffect(() => { loadUi(lang); }, [lang]);
+    const title = uiText('boss', lang).title;
+    const rtl = isRtl(lang);
     document.documentElement.lang = lang;
     document.documentElement.dir = rtl ? 'rtl' : 'ltr';
     const hotel = useHotel();
     const hotelName = hotelTitle(hotel, lang);
-    document.title = TITLE[lang] + (hotelName ? ' · ' + hotelName : '');
+    document.title = title + (hotelName ? ' · ' + hotelName : '');
 
     // Оформление и название отеля, которому принадлежит ссылка
     useEffect(() => {
@@ -40,7 +42,7 @@ export default function MeterBossPage({ accessKey, lang }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--brand-primary, #371f20)', padding: '14px 16px', borderRadius: '14px', boxShadow: '0 2px 8px rgba(55,31,32,0.25)' }}>
                 <BrandEmblem size={44} />
                 <div>
-                    <h1 style={{ margin: 0, color: 'var(--brand-text, #f9edd3)', fontSize: 'clamp(20px, 5.5vw, 24px)' }}>{TITLE[lang]}</h1>
+                    <h1 style={{ margin: 0, color: 'var(--brand-text, #f9edd3)', fontSize: 'clamp(20px, 5.5vw, 24px)' }}>{title}</h1>
                     <span style={{ fontSize: '15px', color: 'var(--brand-accent, #cdaa7c)' }}>{hotelName}</span>
                 </div>
             </div>

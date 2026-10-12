@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, Pills, LANG_LIST, LANG_NAMES, isRtl } from './adminUi';
+import { tr, api, errText, S, Message, Pills, langName, isRtl } from './adminUi';
 
 // Админка → Справочники: регламентные работы, чек-лист номера, названия объектов.
-// Каждая запись на 4 языках; «Перевести» заполняет остальные языки по одному.
+// Каждая запись на языках отеля; пустые языки сервер заполняет автопереводом при сохранении,
+// «Перевести» показывает перевод заранее, чтобы его можно было поправить.
 
 const API = '/backend/api/admin_dicts.php';
 const OCR_TYPES = ['water_m3', 'water_arad', 'gas_percent'];
 
-// Колонка названия на языке: name_ru… или term_ru… (английское название объекта = его ключ term_en)
+// Колонка названия на языке: name_ru… или term_ru… (у объекта ещё ключ term_key, по нему на него ссылаются)
 const col = (dict, l) => (dict === 'assets' ? 'term_' : 'name_') + l;
 
 export default function AdminDicts({ lang }) {
@@ -28,8 +29,9 @@ export default function AdminDicts({ lang }) {
     useEffect(() => { load(); setForm(null); setFilter(''); }, [load]);
 
     const fields = data?.fields || [];
+    const LANGS = data?.langs || [lang];
     const has = (f) => fields.includes(f);
-    const nameOf = (item) => item[col(dict, lang)] || item[col(dict, 'ru')] || item[col(dict, 'en')] || item.key;
+    const nameOf = (item) => item[col(dict, lang)] || LANGS.map(l => item[col(dict, l)]).find(Boolean) || item.key;
 
     const openNew = () => {
         const values = {};
@@ -48,7 +50,7 @@ export default function AdminDicts({ lang }) {
 
     const translate = async () => {
         const v = form.values;
-        const src = v[col(dict, lang)]?.trim() ? lang : LANG_LIST.find(l => v[col(dict, l)]?.trim());
+        const src = v[col(dict, lang)]?.trim() ? lang : LANGS.find(l => v[col(dict, l)]?.trim());
         if (!src) return;
         setTranslating(true);
         const d = await api(`${API}?action=translate`, { text: v[col(dict, src)] });
@@ -56,7 +58,7 @@ export default function AdminDicts({ lang }) {
         if (!d.success) { setMsg({ ok: false, text: errText(t, d) }); return; }
         setForm(fm => {
             const values = { ...fm.values };
-            LANG_LIST.forEach(l => { if (l !== src && d.translations[l]) values[col(dict, l)] = d.translations[l]; });
+            LANGS.forEach(l => { if (l !== src && d.translations[l]) values[col(dict, l)] = d.translations[l]; });
             return { ...fm, values };
         });
     };
@@ -83,7 +85,7 @@ export default function AdminDicts({ lang }) {
         else if (d.message !== 'in_use') setMsg({ ok: false, text: errText(t, d) });
     };
 
-    const items = (data?.items || []).filter(i => !filter || LANG_LIST.some(l => String(i[col(dict, l)] || '').toLowerCase().includes(filter.toLowerCase())));
+    const items = (data?.items || []).filter(i => !filter || LANGS.some(l => String(i[col(dict, l)] || '').toLowerCase().includes(filter.toLowerCase())));
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
@@ -101,10 +103,10 @@ export default function AdminDicts({ lang }) {
                 <form onSubmit={save} style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={S.hint}>{t.translate_hint}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                        {LANG_LIST.map(l => {
+                        {LANGS.map(l => {
                             const f = col(dict, l);
                             if (!has(f)) return null;
-                            const label = dict === 'assets' && l === 'en' ? `${LANG_NAMES.en} — ${t.term_en}` : LANG_NAMES[l];
+                            const label = langName(l);
                             return (
                                 <label key={l} style={S.label}>{label}
                                     <input style={S.field} dir={isRtl(l) ? 'rtl' : 'ltr'} lang={l} value={form.values[f] ?? ''} onChange={e => setVal(f, e.target.value)} />
@@ -155,7 +157,7 @@ export default function AdminDicts({ lang }) {
                                         <b style={{ color: '#2b2320' }}>{nameOf(i)}</b>
                                         {!!Number(i.requires_ocr) && <span style={{ ...S.badge('#e8f1ff', '#2f4c8a'), marginInlineStart: '8px' }}>📷 {t['ocr_' + i.ocr_type] || i.ocr_type || ''}</span>}
                                         <div style={{ ...S.hint, display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                            {LANG_LIST.filter(l => l !== lang && i[col(dict, l)]).map(l => (
+                                            {LANGS.filter(l => l !== lang && i[col(dict, l)]).map(l => (
                                                 <span key={l}>{l.toUpperCase()}: <bdi dir={isRtl(l) ? 'rtl' : 'ltr'}>{i[col(dict, l)]}</bdi></span>
                                             ))}
                                         </div>

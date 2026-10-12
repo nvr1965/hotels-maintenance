@@ -1,19 +1,12 @@
 // Регистрация service worker + полоска «Нет связи» на языке пользователя.
-const OFFLINE_TEXT = {
-    ru: 'Нет связи. Закрытие заявок и фото не отправятся, пока сеть не вернётся.',
-    en: 'Offline. Closing tasks and photos will not be sent until you are back online.',
-    he: 'אין חיבור. סגירת משימות ותמונות לא יישלחו עד שהחיבור יחזור.',
-    ar: 'لا يوجد اتصال. لن يتم إرسال إغلاق المهام والصور حتى يعود الاتصال.'
-};
-
+import { uiText, dirOf } from './i18n';
 function currentLang() {
     try {
         const saved = localStorage.getItem('hotelapp_user') || sessionStorage.getItem('hotelapp_user');
         const lang = saved && JSON.parse(saved).lang;
-        if (OFFLINE_TEXT[lang]) return lang;
+        if (lang) return lang;
     } catch (e) { /* ignore */ }
-    const urlLang = new URLSearchParams(window.location.search).get('lang');
-    return OFFLINE_TEXT[urlLang] ? urlLang : 'ru';
+    return new URLSearchParams(window.location.search).get('lang') || 'en';
 }
 
 function updateOfflineBar() {
@@ -35,8 +28,8 @@ function updateOfflineBar() {
         document.body.appendChild(bar);
     }
     const lang = currentLang();
-    bar.dir = ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
-    bar.textContent = OFFLINE_TEXT[lang];
+    bar.dir = dirOf(lang);
+    bar.textContent = uiText('app', lang).offline;
 }
 
 window.addEventListener('online', updateOfflineBar);

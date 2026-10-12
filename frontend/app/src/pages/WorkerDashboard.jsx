@@ -10,178 +10,13 @@ import MeterReport from '../components/MeterReport';
 import ReportDateFilter, { hotelToday, fmtYmd } from '../components/ReportDateFilter';
 import RoutineDayReport from '../components/RoutineDayReport';
 import { getBrand, switchHotel } from '../brand';
+import { uiText, dirOf, localeOf } from '../i18n';
 
-const ui = {
-    ru: { 
-        title: 'Панель Исполнителя', title_head: 'Панель руководителя', title_viewer: 'Отчёты отеля', admin_suffix: '(администратор)', mode_reports: '📊 Отчёты', mode_work: '🛠️ Текущая работа', rep_by_periods: '📅 За периоды', rep_by_days: '← По дням', rep_custom: 'Свои даты', logout: 'Выйти', load: 'Загрузка задач...',
-        admin_btn: '⚙️ Интерфейс администратора',
-        tab1: '🚨 Срочные', tab2: '🚪 Плановые', tab3: '📅 Регламентные',
-        no_tasks: 'Нет задач в этой категории',
-        lbl_done: 'Выполнено', lbl_notes: 'Примечания / Комментарий...', btn_close: 'Закрыть заявку',
-        success: 'Заявка успешно закрыта!', back: '← Назад к списку номеров', room_works: 'Список работ в номере:',
-        room_lbl: 'Номер:', building_lbl: 'Корпус', floor_lbl: 'Эт.', routine_title: 'Регламент',
-        planned_default_desc: 'Массовая плановая проверка', btn_room_works: 'Выполнить работы в номере',
-        add_photo: '📸 Сделать фото / показания',
-        upload_photo: '🖼️ Загрузить с диска',
-        delete_photo: 'Удалить',
-        ocr_badge: '📷 Счётчик: только фото', ocr_hint: 'Сфотографируйте счётчик крупно и чётко и нажмите «Закрыть». Распознавать не нужно: показание впишет администратор.',
-        meter_need_photo: 'Сначала сфотографируйте счётчик', meter_saved: 'Фото счётчика сохранено', meter_pending: '⏳ Фото есть, ждёт администратора',
-        ocr_reading: 'Считанные показания', ocr_fail: 'Не удалось распознать показание',
-        ocr_suggestion: 'ИИ предполагает', ocr_manual: 'Введите показание вручную', ocr_confirm: 'Подтвердить',
-        ocr_modal_text: 'ИИ распознал цифры, проверьте и подкорректируйте', ocr_ok: 'ОК',
-        routine_today: 'Сегодня', routine_progress: 'Выполнено', repeat_btn: '🔁 Повторить',
-        back_routine: '← К списку регламентов', routine_done_badge: '✅ Выполнено', no_media: 'Фото нет',
-        repeat_note: 'Повторное выполнение — предыдущий результат сохранится в истории',
-        create_urgent_btn: '+ Создать срочную заявку', create_planned_btn: '+ Создать плановые задачи', select_workers: 'Выберите исполнителей',
-        select_rooms: 'Выберите номера', building_word: 'Здание', floor_word: 'Этаж',
-        select_all_building: 'Выбрать здание', select_all_floor: 'Выбрать этаж',
-        select_all_global: '☑ Выбрать все', deselect_all_global: '☐ Снять все',
-        create_planned_submit: 'Создать проверки', back_planned: '← К списку плановых',
-        err_select_worker: 'Выберите хотя бы одного исполнителя', err_select_room: 'Выберите хотя бы один номер',
-        planned_created_msg: 'Создано новых задач', planned_skipped_msg: 'пропущено номеров с активными задачами',
-        tab4: '📊 Отчёты',
-        rep_tasks: 'Заявки', rep_routine: 'Регламент', rep_planned: 'Плановые', rep_meters: 'Счётчики',
-        rep_from: 'С', rep_to: 'По', rep_apply: 'Показать', rep_loading: 'Загрузка...', rep_no_data: 'Нет данных за период',
-        rep_type_all: 'Все', rep_type_current: 'Срочные', rep_type_planned: 'Плановые',
-        rep_col_created: 'Создана', rep_col_completed: 'Завершена', rep_col_creator: 'Создал', rep_col_worker: 'Выполнил',
-        rep_status_pending: 'Ожидает', rep_status_in_progress: 'В работе', rep_status_done: 'Выполнено',
-        rep_days: 'Дней', rep_export_excel: '📊 Скачать Excel', rep_matrix_hint: 'Нажмите на регламент со счётчиком, чтобы увидеть график показаний',
-        rep_history_title: 'История показаний', rep_close: 'Закрыть', rep_no_history: 'Нет истории показаний за этот период',
-        rep_coverage: 'Проверено номеров', rep_of: 'из', rep_defects: 'дефектов', rep_checklist_progress: 'пунктов проверено',
-        rep_assigned: 'Исполнители', rep_not_assigned: '—',
-        rep_detail_title: 'Что было сделано', rep_detail_notes: 'Примечание', rep_detail_no_notes: 'Без примечаний',
-        rep_detail_media: 'Фото/видео', rep_detail_no_media: 'Фото и видео нет', rep_detail_checklist: 'Чек-лист номера',
-        chk_pending: 'Не проверено', chk_ok: 'Проверено', chk_defect: 'Требует замены', chk_fixed: 'Заменено'
-    },
-    en: { 
-        title: 'Worker Panel', title_head: 'Supervisor Panel', title_viewer: 'Hotel reports', admin_suffix: '(administrator)', mode_reports: '📊 Reports', mode_work: '🛠️ Current work', rep_by_periods: '📅 By periods', rep_by_days: '← By days', rep_custom: 'Custom dates', logout: 'Logout', load: 'Loading tasks...',
-        admin_btn: '⚙️ Admin Panel',
-        tab1: '🚨 Urgent', tab2: '🚪 Planned', tab3: '📅 Routine',
-        no_tasks: 'No tasks in this category',
-        lbl_done: 'Completed', lbl_notes: 'Notes / Comments...', btn_close: 'Close Task',
-        success: 'Task closed successfully!', back: '← Back to rooms list', room_works: 'Room Works Checklist:',
-        room_lbl: 'Room:', building_lbl: 'Bldg', floor_lbl: 'Fl.', routine_title: 'Routine',
-        planned_default_desc: 'Mass planned inspection', btn_room_works: 'Perform room works',
-        add_photo: '📸 Take Photo / Meters',
-        upload_photo: '🖼️ Upload from disk',
-        delete_photo: 'Delete',
-        ocr_badge: '📷 Meter: photo only', ocr_hint: 'Take a clear close-up photo of the meter and press “Close”. No need to read it: the administrator will enter the reading.',
-        meter_need_photo: 'Take a photo of the meter first', meter_saved: 'Meter photo saved', meter_pending: '⏳ Photo saved, waiting for admin',
-        ocr_reading: 'Meter reading', ocr_fail: 'Could not recognize the reading',
-        ocr_suggestion: 'AI suggests', ocr_manual: 'Enter reading manually', ocr_confirm: 'Confirm',
-        ocr_modal_text: 'AI recognized the numbers, please check and correct them', ocr_ok: 'OK',
-        routine_today: 'Today', routine_progress: 'Completed', repeat_btn: '🔁 Repeat',
-        back_routine: '← Back to routine list', routine_done_badge: '✅ Done', no_media: 'No photos',
-        repeat_note: 'Repeat run — the previous result stays in history',
-        create_urgent_btn: '+ Create Urgent Request', create_planned_btn: '+ Create Planned Tasks', select_workers: 'Select Workers',
-        select_rooms: 'Select Rooms', building_word: 'Building', floor_word: 'Floor',
-        select_all_building: 'Select building', select_all_floor: 'Select floor',
-        select_all_global: '☑ Select all', deselect_all_global: '☐ Deselect all',
-        create_planned_submit: 'Create Inspections', back_planned: '← Back to Planned',
-        err_select_worker: 'Select at least one worker', err_select_room: 'Select at least one room',
-        planned_created_msg: 'Created tasks', planned_skipped_msg: 'skipped active rooms',
-        tab4: '📊 Reports',
-        rep_tasks: 'Requests', rep_routine: 'Routine', rep_planned: 'Planned', rep_meters: 'Meters',
-        rep_from: 'From', rep_to: 'To', rep_apply: 'Show', rep_loading: 'Loading...', rep_no_data: 'No data for this period',
-        rep_type_all: 'All', rep_type_current: 'Urgent', rep_type_planned: 'Planned',
-        rep_col_created: 'Created', rep_col_completed: 'Completed', rep_col_creator: 'Created by', rep_col_worker: 'Done by',
-        rep_status_pending: 'Pending', rep_status_in_progress: 'In progress', rep_status_done: 'Done',
-        rep_days: 'Days', rep_export_excel: '📊 Download Excel', rep_matrix_hint: 'Tap a counter routine to see its reading history chart',
-        rep_history_title: 'Reading history', rep_close: 'Close', rep_no_history: 'No reading history for this period',
-        rep_coverage: 'Rooms checked', rep_of: 'of', rep_defects: 'defects', rep_checklist_progress: 'items checked',
-        rep_assigned: 'Assigned to', rep_not_assigned: '—',
-        rep_detail_title: 'What was done', rep_detail_notes: 'Notes', rep_detail_no_notes: 'No notes',
-        rep_detail_media: 'Photos/video', rep_detail_no_media: 'No photos or video', rep_detail_checklist: 'Room checklist',
-        chk_pending: 'Not checked', chk_ok: 'Checked', chk_defect: 'Needs replacement', chk_fixed: 'Replaced'
-    },
-    he: { 
-        title: 'פאנל מבצע', title_head: 'פאנל מנהל אחזקה', title_viewer: 'דוחות המלון', admin_suffix: '(מנהל מערכת)', mode_reports: '📊 דוחות', mode_work: '🛠️ עבודה שוטפת', rep_by_periods: '📅 לפי תקופות', rep_by_days: '← לפי ימים', rep_custom: 'תאריכים לבחירה', logout: 'יציאה', load: 'טוען משימות...',
-        admin_btn: '⚙️ ממשק ניהול',
-        tab1: '🚨 דחוף', tab2: '🚪 מתוכנן', tab3: '📅 שגרה',
-        no_tasks: 'אין משימות בקטגוריה זו',
-        lbl_done: 'בוצע', lbl_notes: 'הערות / הערות שוליים...', btn_close: 'סגור קריאה',
-        success: 'הקריאה נסגרה בהצלחה!', back: '← חזרה לרשימת החדרים', room_works: 'רשימת עבודות בחדר:',
-        room_lbl: 'חדר:', building_lbl: 'בניין', floor_lbl: 'קומה', routine_title: 'שגרה',
-        planned_default_desc: 'בדיקה מתוכננת מרוכזת', btn_room_works: 'ביצוע עבודות בחדר',
-        add_photo: '📸 צלם תמונה / מונה',
-        upload_photo: '🖼️ העלה מהדיסק',
-        delete_photo: 'מחק',
-        ocr_badge: '📷 מונה: צילום בלבד', ocr_hint: 'צלמו את המונה מקרוב ובבירור ולחצו „סגירה”. אין צורך לקרוא אותו: מנהל המערכת יזין את הקריאה.',
-        meter_need_photo: 'קודם צלמו את המונה', meter_saved: 'תמונת המונה נשמרה', meter_pending: '⏳ התמונה נשמרה, ממתינה למנהל',
-        ocr_reading: 'קריאת המונה', ocr_fail: 'לא ניתן לזהות את הקריאה',
-        ocr_suggestion: 'בינה מלאכותית מציעה', ocr_manual: 'הזן קריאה ידנית', ocr_confirm: 'אשר',
-        ocr_modal_text: 'הבינה המלאכותית זיהתה את המספרים, בדקו ותקנו במידת הצורך', ocr_ok: 'אישור',
-        routine_today: 'היום', routine_progress: 'הושלמו', repeat_btn: '🔁 חזור על המשימה',
-        back_routine: '← חזרה לרשימת המשימות השגרתיות', routine_done_badge: '✅ בוצע', no_media: 'אין תמונות',
-        repeat_note: 'ביצוע חוזר — התוצאה הקודמת תישמר בהיסטוריה',
-        create_urgent_btn: '+ יצירת קריאה דחופה', create_planned_btn: '+ צור משימות מתוכננות', select_workers: 'בחר מבצעים',
-        select_rooms: 'בחר חדרים', building_word: 'בניין', floor_word: 'קומה',
-        select_all_building: 'בחר בניין', select_all_floor: 'בחר קומה',
-        select_all_global: '☑ בחר הכל', deselect_all_global: '☐ נקה הכל',
-        create_planned_submit: 'צור בדיקות', back_planned: '← חזרה לרשימה המתוכננת',
-        err_select_worker: 'בחר לפחות עובד אחד', err_select_room: 'בחר לפחות חדר אחד',
-        planned_created_msg: 'נוצרו משימות', planned_skipped_msg: 'דולגו חדרים פעילים',
-        tab4: '📊 דוחות',
-        rep_tasks: 'קריאות', rep_routine: 'שגרה', rep_planned: 'מתוכנן', rep_meters: 'מונים',
-        rep_from: 'מ-', rep_to: 'עד', rep_apply: 'הצג', rep_loading: 'טוען...', rep_no_data: 'אין נתונים לתקופה זו',
-        rep_type_all: 'הכל', rep_type_current: 'דחוף', rep_type_planned: 'מתוכנן',
-        rep_col_created: 'נוצרה', rep_col_completed: 'הושלמה', rep_col_creator: 'נוצר על ידי', rep_col_worker: 'בוצע על ידי',
-        rep_status_pending: 'ממתין', rep_status_in_progress: 'בביצוע', rep_status_done: 'הושלם',
-        rep_days: 'ימים', rep_export_excel: '📊 הורד אקסל', rep_matrix_hint: 'הקש על משימת שגרה עם מונה כדי לראות גרף קריאות',
-        rep_history_title: 'היסטוריית קריאות', rep_close: 'סגור', rep_no_history: 'אין היסטוריית קריאות לתקופה זו',
-        rep_coverage: 'חדרים שנבדקו', rep_of: 'מתוך', rep_defects: 'תקלות', rep_checklist_progress: 'פריטים נבדקו',
-        rep_assigned: 'מבצעים', rep_not_assigned: '—',
-        rep_detail_title: 'מה בוצע', rep_detail_notes: 'הערה', rep_detail_no_notes: 'אין הערות',
-        rep_detail_media: 'תמונות/וידאו', rep_detail_no_media: 'אין תמונות או וידאו', rep_detail_checklist: 'רשימת בדיקה של החדר',
-        chk_pending: 'לא נבדק', chk_ok: 'נבדק', chk_defect: 'דורש החלפה', chk_fixed: 'הוחלף'
-    },
-    ar: { 
-        title: 'لوحة العامل', title_head: 'لوحة مدير الصيانة', title_viewer: 'تقارير الفندق', admin_suffix: '(مسؤول النظام)', mode_reports: '📊 التقارير', mode_work: '🛠️ العمل الحالي', rep_by_periods: '📅 حسب الفترات', rep_by_days: '← حسب الأيام', rep_custom: 'تواريخ مخصصة', logout: 'خروج', load: 'جاري تحميل المهام...',
-        admin_btn: '⚙️ لوحة الادارة',
-        tab1: '🚨 طارئ', tab2: '🚪 مخطط', tab3: '📅 دوري',
-        no_tasks: 'لا توجد مهام في هذه الفئة',
-        lbl_done: 'مكتمل', lbl_notes: 'ملاحظات / تعليقات...', btn_close: 'إغلاق الطلب',
-        success: 'تم إغلاق الطلب بنجاح!', back: '← العودة لقائمة الغرف', room_works: 'قائمة أعمال الغرفة:',
-        room_lbl: 'غرفة:', building_lbl: 'مبنى', floor_lbl: 'طابق', routine_title: 'دوري',
-        planned_default_desc: 'فحص مخطط جماعي', btn_room_works: 'تنفيذ أعمال الغرفة',
-        add_photo: '📸 التقاط صورة / العداد',
-        upload_photo: '🖼️ تحميل من القرص',
-        delete_photo: 'حذف',
-        ocr_badge: '📷 عداد: صورة فقط', ocr_hint: 'التقط صورة واضحة ومقرّبة للعداد واضغط «إغلاق». لا حاجة لقراءته: سيُدخل المسؤول القراءة.',
-        meter_need_photo: 'صوّر العداد أولاً', meter_saved: 'تم حفظ صورة العداد', meter_pending: '⏳ الصورة محفوظة، بانتظار المسؤول',
-        ocr_reading: 'قراءة العداد', ocr_fail: 'تعذّر التعرف على القراءة',
-        ocr_suggestion: 'الذكاء الاصطناعي يقترح', ocr_manual: 'أدخل القراءة يدوياً', ocr_confirm: 'تأكيد',
-        ocr_modal_text: 'تعرّف الذكاء الاصطناعي على الأرقام، يرجى التحقق منها وتصحيحها', ocr_ok: 'موافق',
-        routine_today: 'اليوم', routine_progress: 'مكتمل', repeat_btn: '🔁 إعادة',
-        back_routine: '← العودة إلى قائمة المهام الدورية', routine_done_badge: '✅ تم', no_media: 'لا توجد صور',
-        repeat_note: 'إعادة التنفيذ — ستبقى النتيجة السابقة في السجل',
-        create_urgent_btn: '+ إنشاء طلب عاجل', create_planned_btn: '+ إنشاء مهام مخططة', select_workers: 'اختر المنفذين',
-        select_rooms: 'اختر الغرف', building_word: 'مبنى', floor_word: 'طابق',
-        select_all_building: 'تحديد المبنى', select_all_floor: 'تحديد الطابق',
-        select_all_global: '☑ تحديد الكل', deselect_all_global: '☐ إلغاء الكل',
-        create_planned_submit: 'إنشاء فحوصات', back_planned: '← العودة إلى المخطط',
-        err_select_worker: 'اختر منفذاً واحداً على الأقل', err_select_room: 'اختر غرفة واحدة على الأقل',
-        planned_created_msg: 'تم إنشاء مهام', planned_skipped_msg: 'تم تخطي الغرف النشطة',
-        tab4: '📊 التقارير',
-        rep_tasks: 'الطلبات', rep_routine: 'الدوري', rep_planned: 'المخطط', rep_meters: 'العدادات',
-        rep_from: 'من', rep_to: 'إلى', rep_apply: 'عرض', rep_loading: 'جارٍ التحميل...', rep_no_data: 'لا توجد بيانات لهذه الفترة',
-        rep_type_all: 'الكل', rep_type_current: 'طارئ', rep_type_planned: 'مخطط',
-        rep_col_created: 'أُنشئت', rep_col_completed: 'اكتملت', rep_col_creator: 'أنشأها', rep_col_worker: 'نفّذها',
-        rep_status_pending: 'قيد الانتظار', rep_status_in_progress: 'قيد التنفيذ', rep_status_done: 'مكتملة',
-        rep_days: 'أيام', rep_export_excel: '📊 تنزيل Excel', rep_matrix_hint: 'اضغط على مهمة دورية بها عداد لرؤية رسم بياني للقراءات',
-        rep_history_title: 'سجل القراءات', rep_close: 'إغلاق', rep_no_history: 'لا يوجد سجل قراءات لهذه الفترة',
-        rep_coverage: 'الغرف المفحوصة', rep_of: 'من', rep_defects: 'أعطال', rep_checklist_progress: 'عناصر تم فحصها',
-        rep_assigned: 'المنفذون', rep_not_assigned: '—',
-        rep_detail_title: 'ما تم إنجازه', rep_detail_notes: 'ملاحظة', rep_detail_no_notes: 'لا توجد ملاحظات',
-        rep_detail_media: 'صور/فيديو', rep_detail_no_media: 'لا توجد صور أو فيديو', rep_detail_checklist: 'قائمة فحص الغرفة',
-        chk_pending: 'لم يُفحص', chk_ok: 'تم الفحص', chk_defect: 'يتطلب استبدال', chk_fixed: 'تم الاستبدال'
-    }
-};
 
 export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAdmin, onCreateUrgent, startInWork }) {
-    const lang = user.lang || 'ru';
-    const text = ui[lang];
-    const dir = ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
+    const lang = user.lang || 'en';
+    const text = uiText('worker', lang);
+    const dir = dirOf(lang);
 
     const isAdmin = Number(user.sysadmin) === 1;
     // Отчёты видят руководитель и администратор, но панели у них разные:
@@ -214,7 +49,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
 
     // Открытая регламентная задача: { task, repeat }. null — показываем список
     const [routineView, setRoutineView] = useState(null);
-    // Дата (по Asia/Jerusalem), за которую загружен список; по её смене список обновляется сам
+    // Дата (по часам отеля), за которую загружен список; по её смене список обновляется сам
     const [todayStr, setTodayStr] = useState('');
     const loadedDateRef = useRef('');
 
@@ -262,7 +97,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
             return next;
         });
     };
-    const jerusalemToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+    const jerusalemToday = () => hotelToday(); // дата по часам отеля
 
     const loadWorkerTasks = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -402,7 +237,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
         if (plannedFormData) return; // уже загружено в этой сессии
         setPlannedFormLoading(true);
         try {
-            const res = await fetch(`/backend/api/get_planned_form_data.php?lang=${user.lang || 'ru'}`);
+            const res = await fetch(`/backend/api/get_planned_form_data.php?lang=${user.lang || 'en'}`);
             const data = await res.json();
             if (data.success) setPlannedFormData({ workers: data.workers || [], buildings: data.buildings || [] });
         } catch (e) {
@@ -472,7 +307,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
     const loadTasksReport = async (filter = tasksReportFilter) => {
         setTasksReport(prev => ({ ...prev, loading: true, error: null }));
         try {
-            const params = new URLSearchParams({ from: filter.from, to: filter.to, type: filter.type, lang: user.lang || 'ru' });
+            const params = new URLSearchParams({ from: filter.from, to: filter.to, type: filter.type, lang: user.lang || 'en' });
             const res = await fetch(`/backend/api/get_tasks_report.php?${params}`);
             const data = await res.json();
             if (data.success) setTasksReport({ loading: false, data, error: null });
@@ -484,7 +319,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
 
     const routineMatrixQuery = (f = routineMatrixFilter) => {
         const q = f.from && f.to ? { from: f.from, to: f.to } : { days: f.days };
-        return new URLSearchParams({ ...q, lang: user.lang || 'ru' });
+        return new URLSearchParams({ ...q, lang: user.lang || 'en' });
     };
 
     const loadRoutineReport = async (filter = routineMatrixFilter) => {
@@ -503,7 +338,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
     const openRoutineHistory = async (task) => {
         setRoutineHistory({ open: true, loading: true, task, history: [] });
         try {
-            const params = new URLSearchParams({ history_task_id: task.id, days: 90, lang: user.lang || 'ru' });
+            const params = new URLSearchParams({ history_task_id: task.id, days: 90, lang: user.lang || 'en' });
             const res = await fetch(`/backend/api/get_routine_matrix.php?${params}`);
             const data = await res.json();
             setRoutineHistory({ open: true, loading: false, task, history: data.success ? (data.history || []) : [] });
@@ -515,7 +350,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
     const loadPlannedReport = async (filter = plannedReportFilter) => {
         setPlannedReport(prev => ({ ...prev, loading: true, error: null }));
         try {
-            const params = new URLSearchParams({ from: filter.from, to: filter.to, lang: user.lang || 'ru' });
+            const params = new URLSearchParams({ from: filter.from, to: filter.to, lang: user.lang || 'en' });
             const res = await fetch(`/backend/api/get_planned_report.php?${params}`);
             const data = await res.json();
             if (data.success) setPlannedReport({ loading: false, data, error: null });
@@ -672,7 +507,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
                     task_id: taskId,
                     task_type: taskType,
                     worker_id: user.id,
-                    lang: user.lang || 'ru',
+                    lang: user.lang || 'en',
                     // У регламентов и у экрана номера (плановые) нет отдельного чекбокса «Выполнено» —
                     // сама кнопка «Закрыть заявку» на этих экранах и означает «выполнено».
                     // У срочных заявок чекбокс есть и его значение уважаем.
@@ -782,7 +617,7 @@ export default function WorkerDashboard({ user, onLogout, onChangeLang, onOpenAd
         if (!s) return '—';
         const d = new Date(s.replace(' ', 'T'));
         if (isNaN(d.getTime())) return s;
-        return d.toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang) + ' ' + d.toTimeString().slice(0, 5);
+        return d.toLocaleDateString(localeOf(lang)) + ' ' + d.toTimeString().slice(0, 5);
     };
 
     // ---------- ОТЧЁТЫ: заявки (срочные + плановые) ----------

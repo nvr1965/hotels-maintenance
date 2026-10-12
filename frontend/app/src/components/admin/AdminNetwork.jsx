@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, LANG_NAMES, LANG_LIST } from './adminUi';
+import { tr, api, errText, S, Message, langName, languageList } from './adminUi';
 import { setBrand, getBrand } from '../../brand';
+import { uiText } from '../../i18n';
 
 // Админка → Сеть (для администраторов сети и владельца системы): отели сети с настройками и брендингом,
 // новый отель с копией справочников, люди в отелях сети, администраторы и наблюдатели сети.
@@ -10,50 +11,6 @@ const API = '/backend/api/net_admin.php';
 const ROLES = ['worker', 'manager', 'head'];
 const ORG_ROLES = ['org_admin', 'org_viewer'];
 
-const TXT = {
-    ru: {
-        org: 'Сеть', role_label: 'Роль', role_org: 'Роль в сети', new_org: '＋ Новая сеть', org_name: 'Название сети', slug: 'Короткое имя для адреса (латиница)',
-        hotels: 'Отели сети', new_hotel: '＋ Новый отель', members_n: (n) => `${n} чел.`, assets_n: (n) => `${n} объектов`,
-        off: 'выключен', current: 'текущий', open_hotel: 'Перейти в этот отель',
-        h_main: 'Основное', h_brand: 'Оформление', h_push: 'Уведомления о срочных заявках', h_people: 'Люди в отеле',
-        name: 'Название', address: 'Адрес', timezone: 'Часовой пояс', languages: 'Языки', default_lang: 'Язык по умолчанию',
-        title_in: (l) => `Заголовок (${l})`, subtitle: 'Подпись под названием', logo: 'Логотип: адрес картинки (/brand/… или https://…)',
-        c_primary: 'Шапка', c_accent: 'Акцент', c_text: 'Текст в шапке', c_button: 'Кнопки', active: 'Отель работает',
-        push_hint: 'Кому приходят уведомления на телефон', copy_from: 'Справочники скопировать из', copy_none: 'не копировать (пустые)',
-        preview: 'Так будет выглядеть', created: (c) => c ? `Отель создан, скопировано: объекты-термины ${c.asset_dictionary}, обход ${c.room_checklist_dict}, регламенты ${c.routine_tasks}` : 'Отель создан',
-        add_person: 'Добавить человека', from_network: 'Из других отелей сети', new_person: 'Новый человек', pick: '— выбрать —',
-        login: 'Логин', display_name: 'Имя', password: 'Пароль (минимум 6 символов)', is_admin: 'Администратор отеля', remove: 'Убрать из отеля',
-        org_people: 'Администраторы и наблюдатели сети', org_admin: 'Администратор сети', org_viewer: 'Наблюдатель',
-        org_admin_d: 'Все отели сети как администратор, заводит новые отели.', org_viewer_d: 'Все отели сети, только отчёты.',
-        remove_org: 'Убрать из сети', no_access: 'Эта вкладка для администраторов сети.',
-        err_bad_slug: 'Короткое имя: латиница, цифры и дефис, от 2 символов', err_slug_taken: 'Такое короткое имя уже занято',
-        err_bad_timezone: 'Неизвестный часовой пояс', err_languages_required: 'Выберите хотя бы один язык', err_bad_color: 'Цвет в виде #rrggbb',
-        err_bad_logo_url: 'Адрес логотипа должен начинаться с / или https://', err_login_required: 'Впишите логин',
-        err_login_taken: 'Такой логин уже есть. Если это тот же человек, добавьте его из других отелей сети', err_user_not_found: 'Человек не найден',
-        err_password_short: 'Пароль слишком короткий (минимум 6 символов)',
-    },
-    en: {
-        org: 'Network', role_label: 'Role', role_org: 'Network role', new_org: '＋ New network', org_name: 'Network name', slug: 'Short name for the address (latin)',
-        hotels: 'Hotels', new_hotel: '＋ New hotel', members_n: (n) => `${n} people`, assets_n: (n) => `${n} objects`,
-        off: 'off', current: 'current', open_hotel: 'Switch to this hotel',
-        h_main: 'Main', h_brand: 'Appearance', h_push: 'Urgent task notifications', h_people: 'People in the hotel',
-        name: 'Name', address: 'Address', timezone: 'Time zone', languages: 'Languages', default_lang: 'Default language',
-        title_in: (l) => `Title (${l})`, subtitle: 'Subtitle', logo: 'Logo image address (/brand/… or https://…)',
-        c_primary: 'Header', c_accent: 'Accent', c_text: 'Header text', c_button: 'Buttons', active: 'Hotel is active',
-        push_hint: 'Who gets phone notifications', copy_from: 'Copy dictionaries from', copy_none: 'do not copy (empty)',
-        preview: 'Preview', created: (c) => c ? `Hotel created, copied: terms ${c.asset_dictionary}, checklist ${c.room_checklist_dict}, routines ${c.routine_tasks}` : 'Hotel created',
-        add_person: 'Add a person', from_network: 'From other hotels of the network', new_person: 'New person', pick: '— choose —',
-        login: 'Login', display_name: 'Name', password: 'Password (at least 6 characters)', is_admin: 'Hotel administrator', remove: 'Remove from hotel',
-        org_people: 'Network administrators and observers', org_admin: 'Network administrator', org_viewer: 'Observer',
-        org_admin_d: 'All hotels of the network as administrator, creates hotels.', org_viewer_d: 'All hotels of the network, reports only.',
-        remove_org: 'Remove from network', no_access: 'This tab is for network administrators.',
-        err_bad_slug: 'Short name: latin letters, digits and hyphen, 2+ characters', err_slug_taken: 'This short name is taken',
-        err_bad_timezone: 'Unknown time zone', err_languages_required: 'Choose at least one language', err_bad_color: 'Color as #rrggbb',
-        err_bad_logo_url: 'Logo address must start with / or https://', err_login_required: 'Enter a login',
-        err_login_taken: 'This login exists. If it is the same person, add them from other hotels of the network', err_user_not_found: 'Person not found',
-        err_password_short: 'Password too short (at least 6 characters)',
-    },
-};
 
 const TIMEZONES = (() => {
     try { return Intl.supportedValuesOf('timeZone'); } catch { return ['UTC', 'Asia/Jerusalem', 'Europe/Moscow']; }
@@ -61,7 +18,7 @@ const TIMEZONES = (() => {
 
 const blankHotel = (orgId) => ({
     id: 0, org_id: orgId, name: '', slug: '', address: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    languages: ['ru', 'en', 'he', 'ar'], default_lang: 'ru', brand_title_ru: '', brand_title_en: '', brand_title_he: '', brand_title_ar: '',
+    languages: ['en'], default_lang: 'en', brand_title: {},
     brand_subtitle: '', logo_url: '', color_primary: '#1f3a5f', color_accent: '#c9a96e', color_text: '#ffffff', color_button: '#1f3a5f',
     active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0,
 });
@@ -70,18 +27,20 @@ const blankHotel = (orgId) => ({
 const toForm = (h) => ({
     id: h.id, org_id: h.org_id, name: h.name, slug: h.slug, address: h.address || '', timezone: h.timezone,
     languages: h.languages, default_lang: h.default_lang,
-    brand_title_ru: h.raw?.brand_title_ru || '', brand_title_en: h.raw?.brand_title_en || '',
-    brand_title_he: h.raw?.brand_title_he || '', brand_title_ar: h.raw?.brand_title_ar || '',
+    brand_title: { ...(h.brand_title || {}) },   // пустые языки сервер заполнит автопереводом
     brand_subtitle: h.brand.subtitle || '', logo_url: h.brand.logo_url || '',
     color_primary: h.brand.color_primary, color_accent: h.brand.color_accent, color_text: h.brand.color_text, color_button: h.brand.color_button,
     active: h.active, settings: Array.isArray(h.settings) ? {} : { ...h.settings },
 });
 
+// Все включённые языки системы (страница «Языки»), по порядку
+const ALL_LANGS = () => languageList().map(l => l.code);
+
 const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 
 export default function AdminNetwork({ lang }) {
     const base = tr(lang);
-    const t = { ...base, ...(TXT[lang] || TXT.en) };
+    const t = { ...base, ...uiText('network', lang) };
     const fail = (d) => ({ ok: false, text: errText(t, d) });
 
     const [orgs, setOrgs] = useState(null);
@@ -126,7 +85,7 @@ export default function AdminNetwork({ lang }) {
         e.preventDefault();
         const d = await post('hotel_save', form);
         if (!d.success) return;
-        setMsg({ ok: true, text: form.id ? t.saved : t.created(d.copied) });
+        setMsg({ ok: true, text: form.id ? t.saved : d.copied ? t.created_copied(d.copied.asset_dictionary, d.copied.room_checklist_dict, d.copied.routine_tasks) : t.created });
         setForm(null);
         await loadOrg();
         // Правили текущий отель — сразу применить новое оформление
@@ -234,7 +193,7 @@ export default function AdminNetwork({ lang }) {
 function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
     const toggleLang = (l) => setForm(f => {
-        const langs = f.languages.includes(l) ? f.languages.filter(x => x !== l) : LANG_LIST.filter(x => x === l || f.languages.includes(x));
+        const langs = f.languages.includes(l) ? f.languages.filter(x => x !== l) : ALL_LANGS().filter(x => x === l || f.languages.includes(x));
         return { ...f, languages: langs, default_lang: langs.includes(f.default_lang) ? f.default_lang : (langs[0] || f.default_lang) };
     });
     const pushRoles = form.settings?.push_roles || ['worker', 'head'];
@@ -243,7 +202,7 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
         return { ...f, settings: { ...f.settings, push_roles: cur.includes(r) ? cur.filter(x => x !== r) : [...cur, r] } };
     });
     const grid = { display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' };
-    const title = form[`brand_title_${form.default_lang}`] || form.name || '…';
+    const title = form.brand_title?.[form.default_lang] || form.name || '…';
 
     return (
         <form onSubmit={onSubmit} style={{ ...S.card, background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -267,14 +226,14 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
             </div>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={S.label}>{t.languages}</span>
-                {LANG_LIST.map(l => (
+                {ALL_LANGS().map(l => (
                     <label key={l} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                        <input type="checkbox" checked={form.languages.includes(l)} onChange={() => toggleLang(l)} /> {LANG_NAMES[l]}
+                        <input type="checkbox" checked={form.languages.includes(l)} onChange={() => toggleLang(l)} /> {langName(l)}
                     </label>
                 ))}
                 <label style={{ ...S.label, flexDirection: 'row', alignItems: 'center', gap: '8px' }}>{t.default_lang}
                     <select style={{ ...S.field, width: 'auto' }} value={form.default_lang} onChange={e => set('default_lang', e.target.value)}>
-                        {form.languages.map(l => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
+                        {form.languages.map(l => <option key={l} value={l}>{langName(l)}</option>)}
                     </select>
                 </label>
             </div>
@@ -291,10 +250,12 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
             </label>
 
             <b>{t.h_brand}</b>
+            <div style={S.hint}>{t.title_hint}</div>
             <div style={grid}>
                 {form.languages.map(l => (
-                    <label key={l} style={S.label}>{t.title_in(LANG_NAMES[l])}
-                        <input style={S.field} dir="auto" value={form[`brand_title_${l}`]} placeholder={form.name} onChange={e => set(`brand_title_${l}`, e.target.value)} />
+                    <label key={l} style={S.label}>{t.title_in(langName(l))}
+                        <input style={S.field} dir="auto" value={form.brand_title?.[l] || ''} placeholder={form.name}
+                            onChange={e => { const v = e.target.value; setForm(f => ({ ...f, brand_title: { ...f.brand_title, [l]: v } })); }} />
                     </label>
                 ))}
                 <label style={S.label}>{t.subtitle}

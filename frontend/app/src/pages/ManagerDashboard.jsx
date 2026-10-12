@@ -4,51 +4,14 @@ import AssetPicker from '../components/AssetPicker';
 import { BrandEmblem } from '../components/BrandLogo';
 import AppMenu from '../components/AppMenu';
 import { errText } from '../components/errorText';
+import { uiText, dirOf, localeOf } from '../i18n';
 
-const ui = {
-    ru: { 
-        title: 'Панель Менеджера', back: '← Назад', report: 'Создать срочную заявку', sel_zone: 'Выберите объект:', 
-        descr: 'Описание проблемы...', attach: '📷 Добавить Фото / Видео', send: 'Отправить в работу', 
-        logout: 'Выйти', success: 'Заявка успешно создана!', load: 'Загрузка...', datetime: 'Текущее время:',
-        my_tasks: '📋 Список заявок', st_pending: '⏳ Ожидает', st_progress: '🔧 В работе', st_done: '✅ Выполнено', no_tasks: 'Нет заявок в этой категории',
-        lbl_created: 'Поставлена:', lbl_done: 'Выполнена:',
-        tab_active: '⏳ В работе', tab_completed: '✅ Выполненные', admin_btn: '⚙️ Админка',
-        select_asset_default: '-- Выберите объект --'
-    },
-    en: { 
-        title: 'Manager Panel', back: '← Back', report: 'Create Urgent Ticket', sel_zone: 'Select Asset:', 
-        descr: 'Problem description...', attach: '📷 Add Photo / Video', send: 'Submit Ticket', 
-        logout: 'Logout', success: 'Ticket created!', load: 'Loading...', datetime: 'Current Time:',
-        my_tasks: '📋 Tickets List', st_pending: '⏳ Pending', st_progress: '🔧 In Progress', st_done: '✅ Done', no_tasks: 'No tickets in this category',
-        lbl_created: 'Created:', lbl_done: 'Completed:',
-        tab_active: '⏳ In Progress', tab_completed: '✅ Completed', admin_btn: '⚙️ Admin',
-        select_asset_default: '-- Select Asset --'
-    },
-    he: { 
-        title: 'פאנל מנהל', back: 'חזרה →', report: 'יצירת קריאה דחופה', sel_zone: 'בחר נכס:', 
-        descr: 'תיאור הבעיה...', attach: '📷 הוסף תמונה / וידאו', send: 'שלח לביצוע', 
-        logout: 'יציאה', success: 'הקריאה נוצרה!', load: 'טוען...', datetime: 'זמן נוכחי:',
-        my_tasks: '📋 רשימת קריאות', st_pending: '⏳ בהמתנה', st_progress: '🔧 בטיפול', st_done: '✅ הושלם', no_tasks: 'אין קריאות בקטגוריה זו',
-        lbl_created: 'נוצר ב:', lbl_done: 'הושלם ב:',
-        tab_active: '⏳ בטיפול', tab_completed: '✅ הושלמו', admin_btn: '⚙️ ניהול',
-        select_asset_default: '-- בחר נכס --'
-    },
-    ar: { 
-        title: 'لوحة المدير', back: 'رجوع →', report: 'إنشاء طلب طارئ', sel_zone: 'اختر الأصل:', 
-        descr: 'وصف المشكلة...', attach: '📷 إضافة صورة / فيديو', send: 'إرسال للعمل', 
-        logout: 'خروج', success: 'تم إنشاء الطلب!', load: 'جاري التحميل...', datetime: 'الوقت الحالي:',
-        my_tasks: '📋 قائمة الطلبات', st_pending: '⏳ قيد الانتظار', st_progress: '🔧 قيد العمل', st_done: '✅ مكتمل', no_tasks: 'لا توجد طلبات في هذه الفئة',
-        lbl_created: 'تاريخ الإنشاء:', lbl_done: 'تاريخ الانتهاء:',
-        tab_active: '⏳ قيد العمل', tab_completed: '✅ المكتملة', admin_btn: '⚙️ الإدارة',
-        select_asset_default: '-- اختر الأصل --'
-    }
-};
 
 export default function ManagerDashboard({ user, onLogout, onChangeLang, onOpenAdmin, onBack }) {
     // Локальный стейт языка для мгновенного переключения интерфейса
-    const [lang, setLang] = useState(user.lang || 'ru');
-    const text = ui[lang];
-    const dir = ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
+    const [lang, setLang] = useState(user.lang || 'en');
+    const text = uiText('manager', lang);
+    const dir = dirOf(lang);
 
     const [locations, setLocations] = useState([]);
     const [tasks, setTasks] = useState([]);
@@ -78,7 +41,7 @@ export default function ManagerDashboard({ user, onLogout, onChangeLang, onOpenA
     useEffect(() => {
         const updateTime = () => {
             const now = new Date();
-            setCurrentDateTime(now.toLocaleString(lang === 'he' ? 'he-IL' : lang === 'ar' ? 'ar-SA' : lang === 'en' ? 'en-US' : 'ru-RU', {
+            setCurrentDateTime(now.toLocaleString(localeOf(lang), {
                 dateStyle: 'medium', timeStyle: 'medium'
             }));
         };
@@ -207,7 +170,7 @@ export default function ManagerDashboard({ user, onLogout, onChangeLang, onOpenA
     const formatDateTime = (mysqlStr) => {
         if (!mysqlStr) return '';
         const d = new Date(mysqlStr.replace(' ', 'T'));
-        return d.toLocaleString(lang === 'he' ? 'he-IL' : lang === 'ar' ? 'ar-SA' : lang === 'en' ? 'en-US' : 'ru-RU', {
+        return d.toLocaleString(localeOf(lang), {
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
         });
     };

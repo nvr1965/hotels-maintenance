@@ -8,24 +8,20 @@ import AdminAssets from '../components/admin/AdminAssets';
 import AdminDb from '../components/admin/AdminDb';
 import AdminPending from '../components/admin/AdminPending';
 import AdminNetwork from '../components/admin/AdminNetwork';
+import AdminLanguages from '../components/admin/AdminLanguages';
 import { isOrgAdmin } from '../brand';
 import { tr, S, api } from '../components/admin/adminUi';
+import { uiText, dirOf } from '../i18n';
 
-const ui = {
-    ru: { title: 'Панель администратора', back: '← Назад к панели исполнителя' },
-    en: { title: 'Admin Dashboard', back: '← Back to Worker Panel' },
-    he: { title: 'לוח בקרה ניהולי', back: '← חזרה לפאנל מבצע' },
-    ar: { title: 'لوحة تحكم المسؤول', back: '← العودة لوحة العامل' }
-};
 
-const ALL_TABS = ['users', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'db'];
+const ALL_TABS = ['users', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'languages', 'db'];
 
 export default function AdminDashboard({ user, onBack, onChangeLang }) {
     // «Сеть» — администраторам сети и владельцу, «База данных» — только владельцу системы
-    const TABS = ALL_TABS.filter(k => (k !== 'network' || user.is_superadmin || isOrgAdmin()) && (k !== 'db' || user.is_superadmin));
-    const lang = user.lang || 'ru';
-    const text = ui[lang];
-    const dir = ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
+    const TABS = ALL_TABS.filter(k => (k !== 'network' || user.is_superadmin || isOrgAdmin()) && ((k !== 'db' && k !== 'languages') || user.is_superadmin));
+    const lang = user.lang || 'en';
+    const text = uiText('admin_dash', lang);
+    const dir = dirOf(lang);
 
     const t = tr(lang);
     const [activeTab, setActiveTab] = useState(() => {
@@ -91,6 +87,7 @@ export default function AdminDashboard({ user, onBack, onChangeLang }) {
                 {activeTab === 'meters' && <MetersAdmin />}
                 {activeTab === 'pending' && <AdminPending lang={lang} onCount={setPendingCount} />}
                 {activeTab === 'network' && <AdminNetwork lang={lang} />}
+                {activeTab === 'languages' && <AdminLanguages lang={lang} />}
                 {activeTab === 'db' && <AdminDb lang={lang} />}
                 {activeTab === 'tasks' && (tasks === null ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: '#6e635b' }}>{t.loading}</div>

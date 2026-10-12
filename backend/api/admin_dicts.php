@@ -97,7 +97,7 @@ if ($action === 'save') {
     $data = ['names' => json_encode($names, JSON_UNESCAPED_UNICODE)];
     if ($dictName === 'assets') {
         // Объекты ссылаются на название по ключу; ключ по умолчанию — английское название
-        $termKey = trim((string)($vals['term_key'] ?? $vals['term_en'] ?? $before['term_key'] ?? $names['en'] ?? ''));
+        $termKey = trim((string)($vals['term_key'] ?? $vals['term_en'] ?? $before['term_key'] ?? $names['en'] ?? reset($names)));
         if ($termKey === '') admin_fail('key_required');
         if (preg_match('/^[0-9]+$/', $termKey)) admin_fail('key_digits');
         $data['term_key'] = $termKey;

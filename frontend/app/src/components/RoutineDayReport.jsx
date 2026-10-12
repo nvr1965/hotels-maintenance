@@ -1,29 +1,16 @@
 import { useEffect, useState } from 'react';
 import { fmtYmd } from './ReportDateFilter';
+import { uiText, dirOf, localeOf } from '../i18n';
 
 // Отчёт руководителя по регламентным работам за день или диапазон дат (get_routine_log_report.php):
 // по каждому дню — что выполнено, кем, во сколько, примечания, фото, показания счётчиков.
 
-const T = {
-    ru: { loading: 'Загрузка...', no_data: 'Нет данных за период', error: 'Не удалось загрузить отчёт', done: 'Выполнено', of: 'из',
-          not_done: 'Не выполнено', pending: '⏳ фото ждёт администратора', repeat: 'повтор', total: 'Итого за период',
-          only_missed: 'Только невыполненные', close: 'Закрыть' },
-    en: { loading: 'Loading...', no_data: 'No data for this period', error: 'Could not load the report', done: 'Done', of: 'of',
-          not_done: 'Not done', pending: '⏳ photo waiting for admin', repeat: 'repeat', total: 'Period total',
-          only_missed: 'Only not done', close: 'Close' },
-    he: { loading: 'טוען...', no_data: 'אין נתונים לתקופה זו', error: 'לא ניתן לטעון את הדוח', done: 'בוצע', of: 'מתוך',
-          not_done: 'לא בוצע', pending: '⏳ התמונה ממתינה למנהל', repeat: 'חזרה', total: 'סה״כ לתקופה',
-          only_missed: 'רק מה שלא בוצע', close: 'סגור' },
-    ar: { loading: 'جارٍ التحميل...', no_data: 'لا توجد بيانات لهذه الفترة', error: 'تعذّر تحميل التقرير', done: 'منجز', of: 'من',
-          not_done: 'لم يُنجز', pending: '⏳ الصورة بانتظار المسؤول', repeat: 'تكرار', total: 'إجمالي الفترة',
-          only_missed: 'غير المنجز فقط', close: 'إغلاق' },
-};
 
-const weekday = (ymd, lang) => new Date(ymd + 'T12:00:00Z').toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang, { weekday: 'short', timeZone: 'UTC' });
+const weekday = (ymd, lang) => new Date(ymd + 'T12:00:00Z').toLocaleDateString(localeOf(lang), { weekday: 'short', timeZone: 'UTC' });
 
-export default function RoutineDayReport({ lang = 'ru', value }) {
-    const t = T[lang] || T.ru;
-    const dir = ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
+export default function RoutineDayReport({ lang = 'en', value }) {
+    const t = uiText('routine_report', lang);
+    const dir = dirOf(lang);
     const [state, setState] = useState({ loading: true, data: null, error: null });
     const [openDays, setOpenDays] = useState(() => new Set());
     const [onlyMissed, setOnlyMissed] = useState(false);
