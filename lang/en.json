@@ -1,0 +1,11 @@
+{
+    "push_urgent_title": "🚨 Urgent request",
+    "no_description": "No description",
+    "object": "Object",
+    "bldg": "Bldg",
+    "floor": "Floor",
+    "planned_default_desc": "Scheduled room check",
+    "media_only_task": "Request with photo, no text",
+    "routine_task": "Routine task",
+    "push_test_body": "Test: notifications work"
+}

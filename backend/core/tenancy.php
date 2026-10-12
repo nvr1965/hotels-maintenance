@@ -2,7 +2,7 @@
 /* Кто в каком отеле и с какой ролью.
  *
  * Права складываются так (сильнейшее побеждает):
- *   users.is_superadmin = 1        — владелец системы: все отели всех сетей, как администратор отеля;
+ *   users.is_superadmin           — владелец системы: все отели всех сетей, как администратор отеля;
  *   org_members.role = org_admin   — администратор сети: все отели своей сети, как администратор отеля;
  *   org_members.role = org_viewer  — наблюдатель сети: все отели сети, только отчёты (роль viewer);
  *   hotel_members                  — роль в конкретном отеле: worker / manager / head + флаг is_admin.
@@ -13,7 +13,7 @@
  *   $me = app_require(null, true);          // только администратор отеля
  *   $hid = $me['hotel_id'];                 // все запросы к данным — с WHERE hotel_id = $hid
  *
- * app_require() заодно ставит часовой пояс отеля для PHP и для MySQL (NOW(), CURDATE()).
+ * app_require() заодно ставит часовой пояс отеля для PHP и для PostgreSQL (NOW(), CURRENT_DATE).
  */
 require_once __DIR__ . '/auth.php';
 
@@ -22,7 +22,6 @@ const APP_HOTEL_ROLES = ['worker', 'manager', 'head'];
 /** Отели, доступные пользователю: [hotel_id => ['hotel' => строка hotels, 'role', 'is_admin', 'via']]. */
 function app_user_hotels(array $user): array
 {
-    global $db;
     $uid = (int)$user['id'];
     $out = [];
 
@@ -37,43 +36,30 @@ function app_user_hotels(array $user): array
     $hotelCols = "h.*, o.name AS org_name";
 
     if ((int)$user['is_superadmin'] === 1) {
-        $res = $db->query("SELECT $hotelCols FROM hotels h JOIN organizations o ON o.id = h.org_id
-                           WHERE h.active = 1 ORDER BY o.name, h.name");
-        while ($h = $res->fetch_assoc()) $add($h, 'head', 1, 'super');
+        foreach (db_all("SELECT $hotelCols FROM hotels h JOIN organizations o ON o.id = h.org_id
+                         WHERE h.active ORDER BY o.name, h.name") as $h) $add($h, 'head', 1, 'super');
     }
 
-    $stmt = $db->prepare("SELECT $hotelCols, om.role AS org_role FROM org_members om
-                          JOIN organizations o ON o.id = om.org_id AND o.active = 1
-                          JOIN hotels h ON h.org_id = om.org_id AND h.active = 1
-                          WHERE om.user_id = ? ORDER BY o.name, h.name");
-    $stmt->bind_param('i', $uid);
-    $stmt->execute();
-    foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $h) {
+    foreach (db_all("SELECT $hotelCols, om.role AS org_role FROM org_members om
+                     JOIN organizations o ON o.id = om.org_id AND o.active
+                     JOIN hotels h ON h.org_id = om.org_id AND h.active
+                     WHERE om.user_id = ? ORDER BY o.name, h.name", [$uid]) as $h) {
         if ($h['org_role'] === 'org_admin') $add($h, 'head', 1, 'org_admin');
         else $add($h, 'viewer', 0, 'org_viewer');
     }
-    $stmt->close();
 
-    $stmt = $db->prepare("SELECT $hotelCols, hm.role AS member_role, hm.is_admin AS member_admin FROM hotel_members hm
-                          JOIN hotels h ON h.id = hm.hotel_id AND h.active = 1
-                          JOIN organizations o ON o.id = h.org_id AND o.active = 1
-                          WHERE hm.user_id = ? AND hm.active = 1 ORDER BY o.name, h.name");
-    $stmt->bind_param('i', $uid);
-    $stmt->execute();
-    foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $h) {
+    foreach (db_all("SELECT $hotelCols, hm.role AS member_role, hm.is_admin AS member_admin FROM hotel_members hm
+                     JOIN hotels h ON h.id = hm.hotel_id AND h.active
+                     JOIN organizations o ON o.id = h.org_id AND o.active
+                     WHERE hm.user_id = ? AND hm.active ORDER BY o.name, h.name", [$uid]) as $h) {
         $add($h, $h['member_role'], (int)$h['member_admin'], 'member');
     }
-    $stmt->close();
 
     // Администратор сети, у которого есть и своя роль в отеле, видит свою роль (исполнитель с правами админа)
     foreach ($out as $id => &$r) {
         if ($r['via'] === 'member' || $r['role'] !== 'head' || !$r['is_admin']) continue;
-        $stmt = $db->prepare("SELECT role FROM hotel_members WHERE hotel_id = ? AND user_id = ? AND active = 1");
-        $stmt->bind_param('ii', $id, $uid);
-        $stmt->execute();
-        $own = $stmt->get_result()->fetch_row();
-        $stmt->close();
-        if ($own) $r['role'] = $own[0];
+        $own = db_value("SELECT role FROM hotel_members WHERE hotel_id = ? AND user_id = ? AND active", [$id, $uid]);
+        if ($own) $r['role'] = $own;
     }
     unset($r);
     return $out;
@@ -82,28 +68,30 @@ function app_user_hotels(array $user): array
 /** Сети, где пользователь администратор или наблюдатель (владелец системы — во всех). */
 function app_user_orgs(array $user): array
 {
-    global $db;
     if ((int)$user['is_superadmin'] === 1) {
-        $rows = $db->query("SELECT id, name, slug, 'org_admin' AS role FROM organizations ORDER BY name")->fetch_all(MYSQLI_ASSOC);
-        foreach ($rows as &$r) $r['id'] = (int)$r['id'];
-        return $rows;
+        return db_all("SELECT id, name, slug, 'org_admin' AS role FROM organizations ORDER BY name");
     }
-    $stmt = $db->prepare("SELECT o.id, o.name, o.slug, om.role FROM org_members om
-                          JOIN organizations o ON o.id = om.org_id WHERE om.user_id = ? ORDER BY o.name");
-    $stmt->bind_param('i', $user['id']);
-    $stmt->execute();
-    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    foreach ($rows as &$r) $r['id'] = (int)$r['id'];
-    return $rows;
+    return db_all("SELECT o.id, o.name, o.slug, om.role FROM org_members om
+                   JOIN organizations o ON o.id = om.org_id WHERE om.user_id = ? ORDER BY o.name", [$user['id']]);
+}
+
+/** Языки отеля (строка hotels) — только включённые в системе, по порядку; хотя бы один. */
+function app_hotel_langs(array $h): array
+{
+    $active = app_languages();
+    $langs = array_values(array_filter(pg_array($h['languages']), fn($l) => isset($active[$l])));
+    return $langs ?: [app_normalize_lang('en')];
 }
 
 /** Отель для показа во фронтенде: настройки и брендинг, без служебного. */
 function app_hotel_public(array $h): array
 {
-    $langs = array_values(array_filter(array_map('trim', explode(',', (string)$h['languages'])),
-        fn($l) => in_array($l, APP_LANGS, true)));
-    $settings = json_decode((string)($h['settings_json'] ?? ''), true);
+    $active = app_languages();
+    $langs = app_hotel_langs($h);
+    $settings = db_json($h['settings'] ?? null);
+    $titles = db_json($h['brand_title'] ?? null);
+    $title = [];
+    foreach ($langs as $l) $title[$l] = $titles[$l] ?? $h['name'];
     return [
         'id'           => (int)$h['id'],
         'org_id'       => (int)$h['org_id'],
@@ -112,14 +100,12 @@ function app_hotel_public(array $h): array
         'slug'         => $h['slug'],
         'timezone'     => $h['timezone'],
         'default_lang' => $h['default_lang'],
-        'languages'    => $langs ?: ['en'],
+        'languages'    => $langs,
+        // Как писать каждый язык отеля (подписи и направление текста)
+        'language_info' => array_map(fn($l) => ['code' => $l, 'name' => $active[$l]['native_name'] ?: $active[$l]['name'],
+                                               'rtl' => (bool)$active[$l]['is_rtl']], $langs),
         'brand' => [
-            'title' => [
-                'ru' => $h['brand_title_ru'] ?: $h['name'],
-                'en' => $h['brand_title_en'] ?: $h['name'],
-                'he' => $h['brand_title_he'] ?: $h['name'],
-                'ar' => $h['brand_title_ar'] ?: $h['name'],
-            ],
+            'title' => (object)$title,
             'subtitle'      => $h['brand_subtitle'],
             'color_primary' => $h['color_primary'],
             'color_accent'  => $h['color_accent'],
@@ -127,22 +113,34 @@ function app_hotel_public(array $h): array
             'color_button'  => $h['color_button'] ?? $h['color_primary'],
             'logo_url'      => $h['logo_url'],
         ],
-        'settings' => is_array($settings) ? $settings : new stdClass(),
+        'settings' => $settings ?: new stdClass(),
     ];
 }
 
-/** Часовой пояс отеля для PHP (date()) и для этой связи с MySQL (NOW()). */
+/** Массив PostgreSQL ({ru,en}) → массив PHP. Только простые значения без кавычек и запятых (коды языков). */
+function pg_array($v): array
+{
+    if (is_array($v)) return $v;
+    $v = trim((string)$v, '{}');
+    return $v === '' ? [] : array_map(fn($x) => trim($x, '"'), explode(',', $v));
+}
+
+/** Массив PHP → литерал массива PostgreSQL для параметра (только коды и простые слова). */
+function pg_array_literal(array $a): string
+{
+    return '{' . implode(',', array_map(fn($x) => preg_replace('/[^A-Za-z0-9_-]/', '', (string)$x), $a)) . '}';
+}
+
+/** Часовой пояс отеля для PHP (date()) и для этой связи с PostgreSQL (NOW(), CURRENT_DATE, вывод timestamptz). */
 function app_apply_timezone(string $tz): void
 {
-    global $db;
     try {
         $zone = new DateTimeZone($tz);
     } catch (Exception $e) {
         $zone = new DateTimeZone('UTC');
     }
     date_default_timezone_set($zone->getName());
-    $offset = (new DateTime('now', $zone))->format('P');
-    $db->query("SET time_zone = '$offset'");
+    db_exec("SELECT set_config('TimeZone', ?, false)", [$zone->getName()]);
 }
 
 /**
@@ -206,26 +204,16 @@ function app_require_org_admin(int $orgId): array
 
 function app_is_org_admin(array $me, int $orgId): bool
 {
-    global $db;
     if ($me['is_superadmin'] === 1) return true;
-    $stmt = $db->prepare("SELECT 1 FROM org_members WHERE org_id = ? AND user_id = ? AND role = 'org_admin'");
-    $stmt->bind_param('ii', $orgId, $me['id']);
-    $stmt->execute();
-    $ok = (bool)$stmt->get_result()->fetch_row();
-    $stmt->close();
-    return $ok;
+    return (bool)db_value("SELECT 1 FROM org_members WHERE org_id = ? AND user_id = ? AND role = 'org_admin'", [$orgId, $me['id']]);
 }
 
 /** Переключить текущий отель. false — нет доступа. */
 function app_select_hotel(array $me, int $hotelId): bool
 {
-    global $db;
     if (!isset($me['hotels'][$hotelId])) return false;
     app_session_set(null, $hotelId);
-    $stmt = $db->prepare("UPDATE users SET last_hotel_id = ? WHERE id = ?");
-    $stmt->bind_param('ii', $hotelId, $me['id']);
-    $stmt->execute();
-    $stmt->close();
+    db_exec("UPDATE users SET last_hotel_id = ? WHERE id = ?", [$hotelId, $me['id']]);
     return true;
 }
 

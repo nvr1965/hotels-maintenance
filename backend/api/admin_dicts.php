@@ -1,36 +1,26 @@
 <?php
 /* Админка → Справочники текущего отеля: регламентные работы, чек-лист номеров, названия объектов.
- * Каждая запись — на 4 языках, есть автоперевод (backend/core/translator.php).
+ * Название хранится в jsonb {язык: текст}; пустые языки отеля заполняются автопереводом при сохранении.
+ * Для фронтенда название отдаётся ещё и полями name_xx (term_xx у объектов) по языкам отеля.
  *
  * GET  ?action=list&dict=routine|checklist|assets
- * POST ?action=save      {dict, key?, values: {...}}   key — id (или term_en для assets); без key — новая запись
+ * POST ?action=save      {dict, key?, values: {name_xx|term_xx…, term_key?, requires_ocr?, ocr_type?}, src_lang?}
+ *                        key — id (term_key для assets); без key — новая запись
  * POST ?action=delete    {dict, key, force?}
- * POST ?action=translate {text}  → {ru, en, he, ar}
+ * POST ?action=translate {text, from?}  → {translations: {язык: текст}} на все языки отеля
  */
 require_once __DIR__ . '/../core/admin.php';
 $me = admin_require();
 $hid = $me['hotel_id'];
+$langs = app_hotel_langs($me['hotel']);
 
 $action = $_GET['action'] ?? 'list';
 if ($action !== 'list') api_require_post();
 
-// Описание справочников. Поля, которых нет в базе, просто пропускаются.
 $DICTS = [
-    'routine' => [
-        'table' => 'routine_tasks', 'key' => 'id',
-        'fields' => ['name_ru', 'name_en', 'name_he', 'name_ar', 'requires_ocr', 'ocr_type'],
-        'order' => 'sort_order ASC, id ASC',
-    ],
-    'checklist' => [
-        'table' => 'room_checklist_dict', 'key' => 'id',
-        'fields' => ['name_ru', 'name_en', 'name_he', 'name_ar'],
-        'order' => 'sort_order ASC, id ASC',
-    ],
-    'assets' => [
-        'table' => 'asset_dictionary', 'key' => 'term_en',
-        'fields' => ['term_en', 'term_ru', 'term_he', 'term_ar'],
-        'order' => 'term_en ASC',
-    ],
+    'routine'   => ['table' => 'routine_tasks', 'key' => 'id', 'prefix' => 'name_', 'extra' => ['requires_ocr', 'ocr_type']],
+    'checklist' => ['table' => 'room_checklist_dict', 'key' => 'id', 'prefix' => 'name_', 'extra' => []],
+    'assets'    => ['table' => 'asset_dictionary', 'key' => 'term_key', 'prefix' => 'term_', 'extra' => []],
 ];
 const OCR_TYPES = ['water_m3', 'water_arad', 'gas_percent'];
 
@@ -38,121 +28,113 @@ const OCR_TYPES = ['water_m3', 'water_arad', 'gas_percent'];
 function dict_usage(string $dict, $key): int
 {
     global $hid;
-    $n = 0;
     if ($dict === 'routine') {
-        // id регламента принадлежит одному отелю, отдельная проверка отеля не нужна
-        foreach (['routine_schedule', 'routine_log'] as $t) $n += admin_count("SELECT COUNT(*) FROM `$t` WHERE task_id = ?", [$key]);
-    } elseif ($dict === 'checklist') {
-        $n += admin_count("SELECT COUNT(*) FROM task_room_checks WHERE check_id = ?", [$key]);
-    } elseif ($dict === 'assets') {
-        $n += admin_count("SELECT COUNT(*) FROM hotel_assets WHERE hotel_id = ? AND asset_key = ?", [$hid, $key]);
+        return admin_count("SELECT (SELECT COUNT(*) FROM routine_schedule WHERE task_id = ?) + (SELECT COUNT(*) FROM routine_log WHERE task_id = ?)", [$key, $key]);
     }
-    return $n;
+    if ($dict === 'checklist') return admin_count("SELECT COUNT(*) FROM task_room_checks WHERE check_id = ?", [$key]);
+    return admin_count("SELECT COUNT(*) FROM hotel_assets WHERE hotel_id = ? AND asset_key = ?", [$hid, $key]);
 }
 
 if ($action === 'translate') {
     $in = admin_input();
     $text = trim((string)($in['text'] ?? ''));
     if ($text === '') admin_fail('empty');
-    require_once __DIR__ . '/../core/translator.php';
-    $tr = (new Translator())->translateToAll($text);
-    admin_ok(['translations' => $tr]);
+    $from = app_normalize_lang($in['from'] ?? $me['lang']);
+    admin_ok(['translations' => i18n_complete([$from => $text], $langs, $from)]);
 }
 
-$dictName = $_GET['dict'] ?? '';
 $in = $action === 'list' ? [] : admin_input();
-if ($action !== 'list') $dictName = (string)($in['dict'] ?? '');
+$dictName = $action === 'list' ? ($_GET['dict'] ?? '') : (string)($in['dict'] ?? '');
 if (!isset($DICTS[$dictName])) admin_fail('bad_dict');
 $D = $DICTS[$dictName];
-
-$cols = admin_columns($D['table']);
-$fields = array_values(array_filter($D['fields'], fn($f) => isset($cols[$f])));
-$keyCol = $D['key'];
 $table = $D['table'];
+$keyCol = $D['key'];
+$fields = array_merge($dictName === 'assets' ? ['term_key'] : [], array_map(fn($l) => $D['prefix'] . $l, $langs), $D['extra']);
 
 function dict_load(string $table, string $keyCol, $key): ?array
 {
     global $hid;
-    return admin_fetch_one("SELECT * FROM " . admin_q($table) . " WHERE hotel_id = ? AND " . admin_q($keyCol) . " = ?", [$hid, $key]);
+    return admin_fetch_one("SELECT * FROM " . admin_q($table) . " WHERE hotel_id = ? AND " . admin_q($keyCol) . "::text = ?", [$hid, (string)$key]);
 }
 
 if ($action === 'list') {
-    $rows = admin_fetch_all("SELECT * FROM " . admin_q($table) . " WHERE hotel_id = ? ORDER BY " . $D['order'], [$hid]);
+    $order = $keyCol === 'id' ? 'sort_order, id' : 'term_key';
     $items = [];
-    foreach ($rows as $r) {
-        $item = ['key' => $r[$keyCol]];
-        foreach ($fields as $f) $item[$f] = $r[$f];
+    foreach (admin_fetch_all("SELECT * FROM " . admin_q($table) . " WHERE hotel_id = ? ORDER BY $order", [$hid]) as $r) {
+        $names = db_json($r['names']);
+        $item = ['key' => $r[$keyCol], 'names' => (object)$names];
         if ($keyCol === 'id') $item['id'] = (int)$r['id'];
+        else $item['term_key'] = $r['term_key'];
+        foreach ($langs as $l) $item[$D['prefix'] . $l] = $names[$l] ?? '';
+        if ($dictName === 'routine') {
+            $item['requires_ocr'] = (int)$r['requires_ocr'];
+            $item['ocr_type'] = $r['ocr_type'];
+        }
         $item['usage'] = dict_usage($dictName, $r[$keyCol]);
         $items[] = $item;
     }
-    admin_ok(['items' => $items, 'fields' => $fields, 'ocr_types' => OCR_TYPES]);
+    admin_ok(['items' => $items, 'fields' => $fields, 'langs' => $langs, 'ocr_types' => OCR_TYPES]);
 }
 
 if ($action === 'save') {
     $vals = is_array($in['values'] ?? null) ? $in['values'] : [];
     $key = $in['key'] ?? null;
-    $data = [];
-    foreach ($fields as $f) {
-        if (!array_key_exists($f, $vals)) continue;
-        $v = $vals[$f];
-        if ($f === 'requires_ocr') $v = !empty($v) ? 1 : 0;
-        elseif ($f === 'ocr_type') {
-            $v = trim((string)$v);
-            if ($v === '') $v = null;
-        } else $v = trim((string)$v);
-        $data[$f] = $v;
-    }
-
-    // Хотя бы одно название, а у названий объектов обязателен английский ключ
-    $nameFields = array_filter($fields, fn($f) => preg_match('/^(name|term)_/', $f));
-    $hasName = false;
-    foreach ($nameFields as $f) if (($data[$f] ?? '') !== '') $hasName = true;
-    if (!$hasName) admin_fail('name_required');
-    if ($dictName === 'assets') {
-        if (($data['term_en'] ?? '') === '') admin_fail('key_required');
-        if (preg_match('/^[0-9]+$/', $data['term_en'])) admin_fail('key_digits');
-    }
-    if (!empty($data['requires_ocr']) && isset($cols['ocr_type']) && empty($data['ocr_type'])) admin_fail('ocr_type_required');
-    if (array_key_exists('ocr_type', $data) && empty($data['requires_ocr'])) $data['ocr_type'] = null;
-
     $isNew = $key === null || $key === '';
+    $before = $isNew ? null : dict_load($table, $keyCol, $key);
+    if (!$isNew && !$before) admin_fail('not_found');
+
+    // Названия: из values[name_xx] или values[names]; языки, которых нет в отеле, сохраняются как были
+    $names = $before ? db_json($before['names']) : [];
+    foreach (is_array($vals['names'] ?? null) ? $vals['names'] : [] as $l => $v) $names[$l] = trim((string)$v);
+    foreach ($vals as $f => $v) {
+        if (strpos($f, $D['prefix']) === 0 && $f !== 'term_key') $names[substr($f, strlen($D['prefix']))] = trim((string)$v);
+    }
+    $names = array_filter($names, fn($v) => $v !== '');
+    if (!$names) admin_fail('name_required');
+    $src = isset($in['src_lang']) ? app_normalize_lang($in['src_lang']) : (isset($names[$me['lang']]) ? $me['lang'] : null);
+    $names = i18n_complete($names, $langs, $src);
+
+    $data = ['names' => json_encode($names, JSON_UNESCAPED_UNICODE)];
+    if ($dictName === 'assets') {
+        // Объекты ссылаются на название по ключу; ключ по умолчанию — английское название
+        $termKey = trim((string)($vals['term_key'] ?? $vals['term_en'] ?? $before['term_key'] ?? $names['en'] ?? ''));
+        if ($termKey === '') admin_fail('key_required');
+        if (preg_match('/^[0-9]+$/', $termKey)) admin_fail('key_digits');
+        $data['term_key'] = $termKey;
+    }
+    if ($dictName === 'routine') {
+        $data['requires_ocr'] = !empty($vals['requires_ocr'] ?? $before['requires_ocr'] ?? false);
+        $ocrType = trim((string)($vals['ocr_type'] ?? $before['ocr_type'] ?? ''));
+        if ($data['requires_ocr'] && $ocrType === '') admin_fail('ocr_type_required');
+        $data['ocr_type'] = $data['requires_ocr'] ? $ocrType : null;
+    }
+
     if ($isNew) {
-        if ($dictName === 'assets' && dict_load($table, 'term_en', $data['term_en'])) admin_fail('key_taken');
+        if ($dictName === 'assets' && dict_load($table, 'term_key', $data['term_key'])) admin_fail('key_taken');
         $data = ['hotel_id' => $hid] + $data;
-        if (isset($cols['sort_order'])) {
-            $data['sort_order'] = (int)admin_count("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM " . admin_q($table) . " WHERE hotel_id = ?", [$hid]);
+        if ($keyCol === 'id') {
+            $data['sort_order'] = admin_count("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM " . admin_q($table) . " WHERE hotel_id = ?", [$hid]);
         }
-        $names = array_keys($data);
-        admin_exec("INSERT INTO " . admin_q($table) . " (" . implode(', ', array_map('admin_q', $names)) . ")
-                    VALUES (" . implode(', ', array_fill(0, count($names), '?')) . ")",
+        $cols = array_keys($data);
+        $newKey = db_value("INSERT INTO " . admin_q($table) . " (" . implode(', ', array_map('admin_q', $cols)) . ")
+                            VALUES (" . implode(', ', array_fill(0, count($cols), '?')) . ") RETURNING " . admin_q($keyCol),
             array_values($data));
-        global $db;
-        $newKey = $keyCol === 'id' ? (int)$db->insert_id : $data['term_en'];
+        if ($keyCol === 'id') $newKey = (int)$newKey;
         admin_audit($me, 'insert', $table, $newKey, null, dict_load($table, $keyCol, $newKey));
         admin_ok(['key' => $newKey]);
     }
 
-    $before = dict_load($table, $keyCol, $key);
-    if (!$before) admin_fail('not_found');
-    $renamed = $dictName === 'assets' && $data['term_en'] !== $before['term_en'];
-    if ($renamed && dict_load($table, 'term_en', $data['term_en'])) admin_fail('key_taken');
-
-    $sets = [];
-    $params = [];
-    foreach ($data as $f => $v) {
-        $sets[] = admin_q($f) . ' = ?';
-        $params[] = $v;
-    }
-    $params[] = $hid;
-    $params[] = $key;
-    admin_exec("UPDATE " . admin_q($table) . " SET " . implode(', ', $sets) . " WHERE hotel_id = ? AND " . admin_q($keyCol) . " = ?", $params);
-
-    // Объекты ссылаются на название по английскому ключу — переименовываем и у них
-    if ($renamed) {
-        admin_exec("UPDATE hotel_assets SET asset_key = ? WHERE hotel_id = ? AND asset_key = ?", [$data['term_en'], $hid, $before['term_en']]);
-    }
-    $newKey = $renamed ? $data['term_en'] : $key;
+    $renamed = $dictName === 'assets' && $data['term_key'] !== $before['term_key'];
+    if ($renamed && dict_load($table, 'term_key', $data['term_key'])) admin_fail('key_taken');
+    db_tx(function () use ($table, $keyCol, $data, $hid, $key, $renamed, $before) {
+        $sets = implode(', ', array_map(fn($f) => admin_q($f) . ' = ?', array_keys($data)));
+        admin_exec("UPDATE " . admin_q($table) . " SET $sets WHERE hotel_id = ? AND " . admin_q($keyCol) . "::text = ?",
+            array_merge(array_values($data), [$hid, (string)$key]));
+        if ($renamed) {
+            admin_exec("UPDATE hotel_assets SET asset_key = ? WHERE hotel_id = ? AND asset_key = ?", [$data['term_key'], $hid, $before['term_key']]);
+        }
+    });
+    $newKey = $renamed ? $data['term_key'] : ($keyCol === 'id' ? (int)$key : $key);
     admin_audit($me, 'update', $table, $key, $before, dict_load($table, $keyCol, $newKey));
     admin_ok(['key' => $newKey]);
 }
@@ -163,7 +145,7 @@ if ($action === 'delete') {
     if (!$before) admin_fail('not_found');
     $usage = dict_usage($dictName, $key);
     if ($usage > 0 && empty($in['force'])) admin_fail('in_use', ['usage' => $usage]);
-    admin_exec("DELETE FROM " . admin_q($table) . " WHERE hotel_id = ? AND " . admin_q($keyCol) . " = ?", [$hid, $key]);
+    admin_exec("DELETE FROM " . admin_q($table) . " WHERE hotel_id = ? AND " . admin_q($keyCol) . "::text = ?", [$hid, (string)$key]);
     admin_audit($me, 'delete', $table, $key, $before, null);
     admin_ok();
 }

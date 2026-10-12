@@ -4,17 +4,19 @@
  */
 ini_set('display_errors', '0');
 require_once __DIR__ . '/tenancy.php';
+require_once __DIR__ . '/translate.php';
+require_once __DIR__ . '/ui_text.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 set_exception_handler(function (Throwable $e) {
-    error_log('hotelapp: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    error_log('hotels: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     if (!headers_sent()) {
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
     }
-    $code = $e instanceof mysqli_sql_exception ? 'db_error' : 'server_error';
+    $code = $e instanceof PDOException ? 'db_error' : 'server_error';
     echo json_encode(['success' => false, 'message' => $code], JSON_UNESCAPED_UNICODE);
     exit;
 });
@@ -35,6 +37,29 @@ function api_ok(array $data = []): void
     exit;
 }
 
+/** Ответить успехом сразу, а долгую работу ($after: автоперевод, рассылка) доделать уже после ответа. */
+function api_ok_then(array $data, callable $after): void
+{
+    $json = json_encode(['success' => true] + $data, JSON_UNESCAPED_UNICODE);
+    ignore_user_abort(true);
+    if (function_exists('fastcgi_finish_request')) {
+        echo $json;
+        fastcgi_finish_request();
+    } else {
+        while (ob_get_level() > 0) ob_end_clean();
+        header('Connection: close');
+        header('Content-Length: ' . strlen($json));
+        echo $json;
+        flush();
+    }
+    try {
+        $after();
+    } catch (Throwable $e) {
+        error_log('hotels: after response: ' . $e->getMessage());
+    }
+    exit;
+}
+
 /** Ошибка с кодом (фронтенд переводит код в текст на языке интерфейса). */
 function api_fail(string $code, array $extra = [], int $http = 200): void
 {
@@ -43,52 +68,31 @@ function api_fail(string $code, array $extra = [], int $http = 200): void
     exit;
 }
 
+/** Язык ответа: ?lang= из запроса (если такой язык есть), иначе язык пользователя. */
+function api_lang(?array $me = null): string
+{
+    $l = $_GET['lang'] ?? $_POST['lang'] ?? null;
+    return app_normalize_lang(is_string($l) && $l !== '' ? $l : ($me['lang'] ?? null));
+}
+
+/** «12, 15, 20» для IN (…): только целые числа. */
+function sql_int_list(array $ids): string
+{
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    return $ids ? implode(',', $ids) : 'NULL';
+}
+
+/** Дата ГГГГ-ММ-ДД или null. */
+function app_valid_date(?string $d): ?string
+{
+    if (!$d || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) return null;
+    [$y, $m, $day] = array_map('intval', explode('-', $d));
+    return checkdate($m, $day, $y) ? $d : null;
+}
+
 function api_require_post(): void
 {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') api_fail('post_required', [], 405);
-}
-
-/** Запрос с параметрами (все как строки, MySQL сам приведёт типы). */
-function db_exec(string $sql, array $params = []): mysqli_stmt
-{
-    global $db;
-    $stmt = $db->prepare($sql);
-    if ($params) {
-        $params = array_map(fn($v) => $v === null ? null : (string)$v, $params);
-        $stmt->bind_param(str_repeat('s', count($params)), ...$params);
-    }
-    $stmt->execute();
-    return $stmt;
-}
-
-function db_one(string $sql, array $params = []): ?array
-{
-    $stmt = db_exec($sql, $params);
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    return $row ?: null;
-}
-
-function db_all(string $sql, array $params = []): array
-{
-    $stmt = db_exec($sql, $params);
-    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    return $rows;
-}
-
-function db_value(string $sql, array $params = [])
-{
-    $stmt = db_exec($sql, $params);
-    $row = $stmt->get_result()->fetch_row();
-    $stmt->close();
-    return $row[0] ?? null;
-}
-
-function db_insert_id(): int
-{
-    global $db;
-    return (int)$db->insert_id;
 }
 
 /** Пароли в журнал не попадают. */
