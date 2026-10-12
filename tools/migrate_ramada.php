@@ -239,8 +239,8 @@ try {
     // Брендинг Ramada — то, что раньше было зашито в index.php и App.jsx
     $stmt = $db->prepare("INSERT INTO hotels (org_id, name, slug, timezone, default_lang, languages,
             brand_title_ru, brand_title_en, brand_title_he, brand_title_ar, brand_subtitle,
-            color_primary, color_accent, color_text, settings_json)
-        VALUES (?, ?, ?, 'Asia/Jerusalem', 'ru', 'ru,en,he,ar', ?, ?, ?, ?, 'OLIVIÉ NAZARETH', '#371f20', '#cdaa7c', '#f9edd3', ?)");
+            color_primary, color_accent, color_text, color_button, logo_url, settings_json)
+        VALUES (?, ?, ?, 'Asia/Jerusalem', 'ru', 'ru,en,he,ar', ?, ?, ?, ?, 'OLIVIÉ NAZARETH', '#371f20', '#cdaa7c', '#f9edd3', '#844128', '/brand/ramada.svg', ?)");
     $titles = [
         'Обслуживание Гостиницы Рамада, сервисная служба',
         'Ramada Hotel Maintenance, Service Department',
@@ -248,7 +248,11 @@ try {
         'صيانة فندق رمادا، قسم الخدمة',
     ];
     // Кому слать уведомления о срочных заявках — как было в Ramada
-    $settings = json_encode(['push_roles' => ['worker', 'head'], 'meter_ocr' => true], JSON_UNESCAPED_UNICODE);
+    $settings = json_encode(['push_roles' => ['worker', 'head'], 'meter_ocr' => true,
+        // Прежние значки Ramada для установки на телефон (brand/ramada/)
+        'icons' => ['192' => '/brand/ramada/icon-192.png', '512' => '/brand/ramada/icon-512.png',
+                    'maskable192' => '/brand/ramada/maskable-192.png', 'maskable512' => '/brand/ramada/maskable-512.png']],
+        JSON_UNESCAPED_UNICODE);
     $stmt->bind_param('isssssss', $orgId, $hotelName, $hotelSlug, $titles[0], $titles[1], $titles[2], $titles[3], $settings);
     $stmt->execute();
     $H = (int)$db->insert_id;

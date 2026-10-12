@@ -10,7 +10,7 @@
  * POST ?action=org_save          {id?, name, slug}
  * GET  ?action=hotels&org_id=
  * POST ?action=hotel_save        {id?, org_id, name, slug, timezone, default_lang, languages[], brand_title_*, brand_subtitle,
- *                                 color_primary, color_accent, color_text, logo_url, address, active, settings{}, copy_from_hotel_id?}
+ *                                 color_primary, color_accent, color_text, color_button, logo_url, address, active, settings{}, copy_from_hotel_id?}
  * GET  ?action=members&hotel_id=
  * POST ?action=member_save       {hotel_id, user_id? | login+display_name+password, role, is_admin, active}
  * POST ?action=member_remove     {hotel_id, user_id}
@@ -178,7 +178,7 @@ if ($action === 'hotel_save') {
     foreach (APP_LANGS as $l) {
         $data["brand_title_$l"] = clean_text($in["brand_title_$l"] ?? ($before["brand_title_$l"] ?? ''), 200) ?: null;
     }
-    foreach (['color_primary' => '#1f3a5f', 'color_accent' => '#c9a96e', 'color_text' => '#ffffff'] as $c => $def) {
+    foreach (['color_primary' => '#1f3a5f', 'color_accent' => '#c9a96e', 'color_text' => '#ffffff', 'color_button' => '#1f3a5f'] as $c => $def) {
         $v = $in[$c] ?? ($before[$c] ?? $def);
         if (!net_valid_color($v)) api_fail('bad_color', ['field' => $c]);
         $data[$c] = strtolower($v);

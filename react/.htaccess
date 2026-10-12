@@ -1,0 +1,27 @@
+# Копируется сборкой Vite в react/.htaccess (папка react/ при каждой сборке перезаписывается).
+
+# SPA: любые неизвестные пути внутри /react/ отдают index.html
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /react/
+  RewriteRule ^index\.html$ - [L]
+  # Файла сборки нет — честный 404, а не index.html (иначе браузер получит HTML вместо скрипта)
+  RewriteRule ^assets/ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /react/index.html [L]
+</IfModule>
+
+# PWA: правильный тип для manifest
+AddType application/manifest+json .webmanifest
+
+<IfModule mod_headers.c>
+  # index.html, service worker и manifest всегда проверяются на сервере (свежая сборка сразу видна)
+  <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  # Файлы сборки с хешем в имени (assets/index-XXXX.js) не меняются никогда — их можно кешировать надолго
+  <FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>

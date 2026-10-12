@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS hotels (
     color_primary CHAR(7) NOT NULL DEFAULT '#1f3a5f',
     color_accent CHAR(7) NOT NULL DEFAULT '#c9a96e',
     color_text CHAR(7) NOT NULL DEFAULT '#ffffff',
+    color_button CHAR(7) NOT NULL DEFAULT '#1f3a5f',
     logo_url VARCHAR(255) NULL,
     address VARCHAR(255) NULL,
     -- Прочие настройки без отдельной колонки (кому слать уведомления, включено ли распознавание и т.п.)

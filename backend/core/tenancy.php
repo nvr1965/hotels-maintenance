@@ -124,6 +124,7 @@ function app_hotel_public(array $h): array
             'color_primary' => $h['color_primary'],
             'color_accent'  => $h['color_accent'],
             'color_text'    => $h['color_text'],
+            'color_button'  => $h['color_button'] ?? $h['color_primary'],
             'logo_url'      => $h['logo_url'],
         ],
         'settings' => is_array($settings) ? $settings : new stdClass(),
