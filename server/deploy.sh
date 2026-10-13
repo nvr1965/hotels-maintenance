@@ -20,5 +20,5 @@ PGPASSWORD="$DB_PASS" psql -q -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -v ON_ER
 echo "Схема базы обновлена"
 
 sudo -u www-data php "$APP_DIR/tools/seed_ui.php" --fill || echo "Перевод не удался: переведётся сам при первом открытии"
-systemctl reload php8.3-fpm
+systemctl reload "php$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')-fpm"
 echo "Готово"

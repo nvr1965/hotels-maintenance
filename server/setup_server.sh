@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Hotels Maintenance: сервер с нуля на Ubuntu 24.04 (виртуальном или выделенном).
-# nginx + php8.3-fpm + PostgreSQL 16, снаружи доступ только через Cloudflare Tunnel (порты наружу не открываются).
+# Hotels Maintenance: сервер с нуля на Ubuntu 24.04 или новее (виртуальном или выделенном).
+# nginx + php-fpm (версия, какая есть в системе, от 8.3) + PostgreSQL, снаружи доступ только через Cloudflare Tunnel (порты наружу не открываются).
 #
 #   sudo DOMAIN=hotels.allservice.cat TUNNEL_TOKEN=<токен туннеля> ADMIN_LOGIN=owner bash setup_server.sh
 #
@@ -25,18 +25,20 @@ APP_DIR=${APP_DIR:-/var/www/hotels}
 DB_NAME=${DB_NAME:-hotels}
 DB_USER=${DB_USER:-hotels}
 LISTEN=${LISTEN:-127.0.0.1:80}
-PHP=8.3
 
 say() { printf '\n\033[1;32m== %s\033[0m\n' "$*"; }
 [ "$(id -u)" -eq 0 ] || { echo "Запускайте через sudo"; exit 1; }
 . /etc/os-release
-[ "${VERSION_ID:-}" = "24.04" ] || echo "Внимание: скрипт проверен на Ubuntu 24.04, здесь ${PRETTY_NAME:-неизвестно}"
+echo "Система: ${PRETTY_NAME:-неизвестно}"
 
 say "Пакеты"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -yq nginx postgresql git curl unzip ca-certificates cron \
-    php$PHP-fpm php$PHP-cli php$PHP-pgsql php$PHP-curl php$PHP-gd php$PHP-mbstring php$PHP-xml php$PHP-zip php$PHP-intl
+    php-fpm php-cli php-pgsql php-curl php-gd php-mbstring php-xml php-zip php-intl
+# Версия PHP — та, что пришла с системой (24.04: 8.3, новее: 8.4 и выше)
+PHP=$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')
+echo "PHP $PHP"
 
 say "Код: $REPO ($BRANCH) → $APP_DIR"
 if [ -d "$APP_DIR/.git" ]; then
