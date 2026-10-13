@@ -14,7 +14,9 @@ VirtualBox → «Создать»:
 1. Имя `hotels`, образ ISO — скачанный файл Ubuntu. Галочку «Пропустить автоматическую установку» поставить (установим сами, так надёжнее).
 2. Память 4096 МБ, процессоров 2.
 3. Диск 40 ГБ (динамический, место занимается по мере заполнения).
-4. «Готово». Затем «Настроить» → «Сеть» → Адаптер 1: «NAT» → «Дополнительно» → «Проброс портов» → добавить правило: хост `2225`, гость `22` (это для входа по SSH с вашего компьютера; 2222–2224 заняты другими машинами).
+4. «Готово». Затем «Настроить» → «Сеть» → Адаптер 1: «NAT» → «Дополнительно» → «Проброс портов» → добавить два правила (2222–2224 и 8080–8082 заняты другими машинами):
+   - `ssh`: хост `2225`, гость `22`
+   - `http`: хост `8083`, гость `80`
 
 ## 3. Установить Ubuntu
 
@@ -32,7 +34,7 @@ VirtualBox → «Создать»:
 Удобнее с вашего компьютера, чтобы копировать команды (Windows: PowerShell; Mac: Терминал):
 
 ```
-ssh -p 2225 nick@127.0.0.1
+ssh -p 2225 nick@localhost
 ```
 
 Первый раз ответить `yes` и ввести пароль. Обновить систему:
@@ -43,7 +45,7 @@ sudo apt update && sudo apt -y upgrade && sudo reboot
 
 Через минуту войти снова той же командой `ssh`.
 
-## 5. Туннель Cloudflare (адрес сайта снаружи)
+## 5. Туннель Cloudflare (позже, сейчас пропустить)
 
 Нужен домен `allservice.cat`, подключённый к Cloudflare.
 
@@ -54,12 +56,14 @@ sudo apt update && sudo apt -y upgrade && sudo reboot
 
 ## 6. Поставить приложение
 
-На сервере (вставить свой токен):
+На сервере:
 
 ```
 curl -fsSLO https://raw.githubusercontent.com/nvr1965/hotels-maintenance/feature/postgresql/server/setup_server.sh
-sudo BRANCH=feature/postgresql DOMAIN=hotels.allservice.cat TUNNEL_TOKEN=ВАШ_ТОКЕН ADMIN_LOGIN=owner HOTEL_NAME="Ramada" HOTEL_LANG=ru HOTEL_TZ=Asia/Jerusalem bash setup_server.sh
+sudo BRANCH=feature/postgresql LISTEN=80 ADMIN_LOGIN=owner HOTEL_NAME="Ramada" HOTEL_LANG=ru HOTEL_TZ=Asia/Jerusalem bash setup_server.sh
 ```
+
+Для туннеля (позже): `sudo BRANCH=feature/postgresql LISTEN=80 DOMAIN=hotels.allservice.cat TUNNEL_TOKEN=ВАШ_ТОКЕН bash setup_server.sh` (без `ADMIN_LOGIN`, иначе пароль владельца сменится).
 
 Скрипт идёт несколько минут. В конце он печатает пароль владельца `owner` — **записать**, второй раз не покажет (сменить можно: `sudo -u www-data php /var/www/hotels/tools/create_admin.php --login=owner`).
 
@@ -67,10 +71,10 @@ sudo BRANCH=feature/postgresql DOMAIN=hotels.allservice.cat TUNNEL_TOKEN=ВАШ_
 
 ## 7. Проверить
 
-- Открыть https://hotels.allservice.cat, войти `owner` и паролем из шага 6.
+- Открыть http://localhost:8083, войти `owner` и паролем из шага 6. Когда будет туннель — https://hotels.allservice.cat.
 - Админка → «Языки»: добавить, например, French и посмотреть, как переводится интерфейс.
 
-Если туннель ещё не готов, сайт можно открыть через SSH: на вашем компьютере `ssh -p 2225 -L 8085:localhost:80 nick@127.0.0.1` и в браузере http://localhost:8085 (уведомления на телефон так работать не будут, им нужен https).
+Уведомления на телефон заработают только через туннель: им нужен https.
 
 ## 8. Дальше
 

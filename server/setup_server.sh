@@ -10,6 +10,8 @@
 #   REPO          откуда брать код                       (https://github.com/nvr1965/hotels-maintenance.git)
 #   BRANCH        ветка                                  (main)
 #   APP_DIR       куда ставить                           (/var/www/hotels)
+#   LISTEN        где слушает nginx                      (127.0.0.1:80 — только для туннеля;
+#                 80 — для VirtualBox с пробросом порта сайта, снаружи машина всё равно не видна)
 #   ADMIN_LOGIN   завести владельца системы и первый отель (пароль напечатается один раз)
 #   HOTEL_NAME, HOTEL_LANG, HOTEL_TZ   первый отель      (Hotel, en, UTC)
 #
@@ -22,6 +24,7 @@ BRANCH=${BRANCH:-main}
 APP_DIR=${APP_DIR:-/var/www/hotels}
 DB_NAME=${DB_NAME:-hotels}
 DB_USER=${DB_USER:-hotels}
+LISTEN=${LISTEN:-127.0.0.1:80}
 PHP=8.3
 
 say() { printf '\n\033[1;32m== %s\033[0m\n' "$*"; }
@@ -89,9 +92,9 @@ systemctl restart php$PHP-fpm
 
 say "nginx"
 cat > /etc/nginx/sites-available/hotels <<NGINX
-# Hotels Maintenance. Снаружи — только через туннель, поэтому слушаем локально.
+# Hotels Maintenance. Снаружи — через туннель (или проброс порта VirtualBox).
 server {
-    listen 127.0.0.1:80 default_server;
+    listen $LISTEN default_server;
     server_name $DOMAIN localhost;
     root $APP_DIR;
     index index.php index.html;
@@ -159,7 +162,7 @@ fi
 
 say "Готово"
 cat <<DONE
- Сайт: https://$DOMAIN   (на самом сервере: curl -I http://localhost/)
+ Сайт: https://$DOMAIN   (на самом сервере: curl -I http://localhost/; nginx слушает $LISTEN)
  Код: $APP_DIR, ветка $BRANCH; обновление: sudo bash $APP_DIR/server/deploy.sh
  База: $DB_NAME, пароль в $CONF
  Cloudflare: $TUNNEL_NOTE
