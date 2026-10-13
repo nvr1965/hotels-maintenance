@@ -5,7 +5,7 @@
 ## 1. Скачать
 
 - VirtualBox: https://www.virtualbox.org/wiki/Downloads
-- Ubuntu Server 24.04 LTS (файл `.iso`): https://ubuntu.com/download/server
+- Ubuntu Server 24.04 LTS или новее (файл `.iso`): https://ubuntu.com/download/server
 
 ## 2. Создать виртуальную машину
 
