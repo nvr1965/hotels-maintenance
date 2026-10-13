@@ -6,6 +6,7 @@ ini_set('display_errors', '0');
 require_once __DIR__ . '/tenancy.php';
 require_once __DIR__ . '/translate.php';
 require_once __DIR__ . '/ui_text.php';
+require_once __DIR__ . '/departments.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');

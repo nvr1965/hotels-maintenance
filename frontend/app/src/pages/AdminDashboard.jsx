@@ -9,12 +9,13 @@ import AdminDb from '../components/admin/AdminDb';
 import AdminPending from '../components/admin/AdminPending';
 import AdminNetwork from '../components/admin/AdminNetwork';
 import AdminLanguages from '../components/admin/AdminLanguages';
+import AdminDepartments from '../components/admin/AdminDepartments';
 import { isOrgAdmin } from '../brand';
 import { tr, S, api } from '../components/admin/adminUi';
 import { uiText, dirOf } from '../i18n';
 
 
-const ALL_TABS = ['users', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'languages', 'db'];
+const ALL_TABS = ['users', 'departments', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'languages', 'db'];
 
 export default function AdminDashboard({ user, onBack, onChangeLang }) {
     // «Сеть» — администраторам сети и владельцу, «База данных» — только владельцу системы
@@ -88,6 +89,7 @@ export default function AdminDashboard({ user, onBack, onChangeLang }) {
                 {activeTab === 'pending' && <AdminPending lang={lang} onCount={setPendingCount} />}
                 {activeTab === 'network' && <AdminNetwork lang={lang} />}
                 {activeTab === 'languages' && <AdminLanguages lang={lang} />}
+                {activeTab === 'departments' && <AdminDepartments lang={lang} />}
                 {activeTab === 'db' && <AdminDb lang={lang} />}
                 {activeTab === 'tasks' && (tasks === null ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: '#6e635b' }}>{t.loading}</div>

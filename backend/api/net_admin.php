@@ -76,13 +76,17 @@ function net_user_from_input(array $me, array $in): array
 function net_copy_dictionaries(int $fromHotel, int $toHotel): array
 {
     $n = [];
+    // Службы — первыми: регламенты и чек-лист нового отеля ссылаются на его собственные службы
+    $deps = dep_copy($fromHotel, $toHotel);
+    $n['hotel_departments'] = count($deps);
+    $depCase = $deps ? 'CASE department_id ' . implode(' ', array_map(fn($o, $nw) => "WHEN $o THEN $nw", array_keys($deps), $deps)) . ' END' : 'NULL';
     $n['asset_dictionary'] = db_exec("INSERT INTO asset_dictionary (hotel_id, term_key, names)
              SELECT ?, term_key, names FROM asset_dictionary WHERE hotel_id = ?", [$toHotel, $fromHotel])->rowCount();
-    $n['room_checklist_dict'] = db_exec("INSERT INTO room_checklist_dict (hotel_id, names, sort_order)
-             SELECT ?, names, sort_order FROM room_checklist_dict WHERE hotel_id = ? ORDER BY sort_order, id",
+    $n['room_checklist_dict'] = db_exec("INSERT INTO room_checklist_dict (hotel_id, names, sort_order, department_id)
+             SELECT ?, names, sort_order, $depCase FROM room_checklist_dict WHERE hotel_id = ? ORDER BY sort_order, id",
         [$toHotel, $fromHotel])->rowCount();
-    $n['routine_tasks'] = db_exec("INSERT INTO routine_tasks (hotel_id, names, requires_ocr, ocr_type, sort_order)
-             SELECT ?, names, requires_ocr, ocr_type, sort_order FROM routine_tasks WHERE hotel_id = ? ORDER BY sort_order, id",
+    $n['routine_tasks'] = db_exec("INSERT INTO routine_tasks (hotel_id, names, requires_ocr, ocr_type, sort_order, department_id)
+             SELECT ?, names, requires_ocr, ocr_type, sort_order, $depCase FROM routine_tasks WHERE hotel_id = ? ORDER BY sort_order, id",
         [$toHotel, $fromHotel])->rowCount();
     return $n;
 }
@@ -199,6 +203,7 @@ if ($action === 'hotel_save') {
         [$id, $copied] = db_tx(function () use ($cols, $data, $from) {
             $id = (int)db_value("INSERT INTO hotels (" . implode(', ', $cols) . ") VALUES (" . implode(', ', array_fill(0, count($cols), '?')) . ") RETURNING id",
                 array_values($data));
+            if (!$from) dep_create_default($id);
             return [$id, $from ? net_copy_dictionaries($from, $id) : null];
         });
         audit($me, 'insert', 'hotels', $id, null, net_hotel($id), $id, $orgId);

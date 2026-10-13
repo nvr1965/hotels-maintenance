@@ -9,7 +9,7 @@ if (PHP_SAPI !== 'cli') {
     http_response_code(404);
     exit;
 }
-require_once __DIR__ . '/../backend/core/db.php';
+require_once __DIR__ . '/../backend/core/departments.php';
 
 $opt = getopt('', ['login:', 'pass::', 'name::', 'hotel::', 'lang::', 'timezone::']);
 $login = trim((string)($opt['login'] ?? ''));
@@ -41,6 +41,7 @@ function slugify(string $s, string $fallback): string
         $langs = array_values(array_unique(['en', $lang]));
         $hid = (int)db_value("INSERT INTO hotels (org_id, name, slug, timezone, default_lang, languages, brand_title) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
             [$orgId, $name, slugify($name, 'hotel'), $tz, $lang, '{' . implode(',', $langs) . '}', json_encode([$lang => $name], JSON_UNESCAPED_UNICODE)]);
+        dep_create_default($hid);
         $newHotel = true;
     }
     $hash = password_hash($pass, PASSWORD_DEFAULT);

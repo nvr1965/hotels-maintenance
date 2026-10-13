@@ -225,7 +225,7 @@ function i18n_complete(array $m, array $langs, ?string $src = null): array
 }
 
 /** Справочники отеля (jsonb names), в которых заполняются недостающие языки. */
-const I18N_HOTEL_DICTS = ['asset_dictionary', 'room_checklist_dict', 'routine_tasks'];
+const I18N_HOTEL_DICTS = ['asset_dictionary', 'room_checklist_dict', 'routine_tasks', 'hotel_departments'];
 
 /**
  * Дописать во все справочники отеля недостающие языки из $langs (автоперевод пачками: один вызов
