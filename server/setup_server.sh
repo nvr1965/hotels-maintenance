@@ -171,4 +171,3 @@ cat <<DONE
  Cloudflare: $TUNNEL_NOTE
 DONE
 [ -n "${ADMIN_LOGIN:-}" ] || echo " Владелец системы: sudo -u www-data php $APP_DIR/tools/create_admin.php --login=owner --hotel=\"Название\""
-echo " Перенос Ramada: docs/ПЕРЕНОС-RAMADA.md"

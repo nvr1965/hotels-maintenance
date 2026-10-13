@@ -56,5 +56,5 @@ function slugify(string $s, string $fallback): string
     return [$uid, $hid, $newHotel];
 });
 
-echo ($newHotel ? "Заведён отель №$hid.\n" : "Отель №$hid уже был, владелец получил к нему доступ.\n");
-echo "Владелец системы: $login (№$uid)" . ($printPass ? ", пароль: $pass" : '') . "\n";
+echo ($newHotel ? "Заведён отель #$hid.\n" : "Отель #$hid уже был, владелец получил к нему доступ.\n");
+echo "Владелец системы: $login (#$uid)" . ($printPass ? ", пароль: $pass" : '') . "\n";
