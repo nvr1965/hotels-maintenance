@@ -54,6 +54,7 @@ chown -R www-data:www-data "$APP_DIR/uploads" "$APP_DIR/backend/sessions"
 chgrp www-data "$APP_DIR/backend/core" && chmod 2775 "$APP_DIR/backend/core"
 
 say "PostgreSQL: база $DB_NAME"
+systemctl enable --now postgresql >/dev/null 2>&1 || systemctl start postgresql
 CONF="$APP_DIR/backend/core/config.local.php"
 if [ -f "$CONF" ]; then
     DB_PASS=$(php -r '$c = require $argv[1]; echo $c["db"]["pass"] ?? "";' "$CONF")
