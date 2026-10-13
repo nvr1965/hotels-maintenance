@@ -60,7 +60,7 @@ sudo apt update && sudo apt -y upgrade && sudo reboot
 
 ```
 curl -fsSLO https://raw.githubusercontent.com/nvr1965/hotels-maintenance/feature/postgresql/server/setup_server.sh
-sudo BRANCH=feature/postgresql LISTEN=80 ADMIN_LOGIN=owner HOTEL_NAME="Ramada" HOTEL_LANG=ru HOTEL_TZ=Asia/Jerusalem bash setup_server.sh
+sudo BRANCH=feature/postgresql LISTEN=80 ADMIN_LOGIN=owner HOTEL_NAME="Test Hotel" HOTEL_LANG=ru HOTEL_TZ=Asia/Jerusalem bash setup_server.sh
 ```
 
 Для туннеля (позже): `sudo BRANCH=feature/postgresql LISTEN=80 DOMAIN=hotels.allservice.cat TUNNEL_TOKEN=ВАШ_ТОКЕН bash setup_server.sh` (без `ADMIN_LOGIN`, иначе пароль владельца сменится).
@@ -79,7 +79,6 @@ sudo BRANCH=feature/postgresql LISTEN=80 ADMIN_LOGIN=owner HOTEL_NAME="Ramada" H
 ## 8. Дальше
 
 - Обновить код после изменений: `sudo bash /var/www/hotels/server/deploy.sh`
-- Перенести данные Ramada: `docs/ПЕРЕНОС-RAMADA.md`. Тогда в шаге 6 `ADMIN_LOGIN` и `HOTEL_*` не указывать.
 - Ключ Gemini и Google (`secrets.php`) положить в `/var/www/hotels/backend/core/` вручную.
 - Перед экспериментами удобно сделать снимок машины: VirtualBox → «Снимки» → «Сделать». Откат — одним щелчком.
 
