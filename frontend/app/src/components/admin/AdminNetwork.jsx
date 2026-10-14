@@ -38,7 +38,7 @@ const ALL_LANGS = () => languageList().map(l => l.code);
 
 const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 
-export default function AdminNetwork({ lang }) {
+export default function AdminNetwork({ lang, onOpenHotel }) {
     const base = tr(lang);
     const t = { ...base, ...uiText('network', lang) };
     const fail = (d) => ({ ok: false, text: errText(t, d) });
@@ -171,6 +171,7 @@ export default function AdminNetwork({ lang }) {
                                             </div>
                                             <div style={S.hint}>{h.slug} · {h.timezone} · {t.members_n(h.members)} · {t.assets_n(h.assets)}</div>
                                         </div>
+                                        {onOpenHotel && h.active && <button type="button" style={S.primary} onClick={() => onOpenHotel(h.id)}>{t.open_hotel}</button>}
                                         <button type="button" style={S.btn} onClick={() => { setMsg(null); setForm(form?.id === h.id ? null : toForm(h)); }}>{form?.id === h.id ? t.close : t.edit}</button>
                                     </div>
                                     {form && form.id === h.id && (

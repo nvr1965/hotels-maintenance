@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import WorkerDashboard from './pages/WorkerDashboard';
 import ManagerDashboard from './pages/ManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SystemAdmin from './pages/SystemAdmin';
 import { BrandLogo, BrandEmblem } from './components/BrandLogo';
 import { disablePush } from './notify/push';
 import { readCachedUser, cacheUser, clearCachedUser, fetchMe, login, logout, saveLang, installUnauthorizedHook, dropLangParam } from './auth';
 import { setBrand, getBrand, useBrand, hotelTitle, loadPublicBrand, switchHotel } from './brand';
-import { uiText, dirOf, languageList, loadUi, useUi } from './i18n';
+import { uiText, dirOf, languageList, langName, loadUi, useUi } from './i18n';
 
 
 // Телефон/планшет или приложение, установленное на экран (PWA)
@@ -22,12 +23,19 @@ function isPhoneOrInstalledApp() {
 
 // Окно отеля с выбором языка: заголовки на языках отеля из его настроек.
 // Показывается, пока никто не вошёл (в том числе после выхода из приложения).
+// Куда попадает вошедший: владелец системы — в общую админку, администратор отеля — в админку отеля,
+// остальные — в рабочую панель. Выбранный экран помнится до закрытия вкладки.
+const VIEW_KEY = 'hotelapp_view';
+const homeView = (u) => (Number(u?.is_superadmin) === 1 ? 'system' : Number(u?.is_admin) === 1 ? 'admin' : 'main');
+const storedView = () => { try { return sessionStorage.getItem(VIEW_KEY); } catch { return null; } };
+const storeView = (v) => { try { if (v) sessionStorage.setItem(VIEW_KEY, v); else sessionStorage.removeItem(VIEW_KEY); } catch { /* не страшно */ } };
+
 const hotelLangs = (hotel) => (hotel?.languages?.length ? hotel.languages : languageList().map((l) => l.code));
 
 function WelcomeScreen({ onPick }) {
     const { hotel } = useBrand();
     const WELCOME = hotelLangs(hotel).map((lang) => ({
-        lang, dir: dirOf(lang), text: hotelTitle(hotel, lang) || lang.toUpperCase()
+        lang, dir: dirOf(lang), text: (hotel && hotelTitle(hotel, lang)) || langName(lang)
     }));
     return (
         <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box', background: 'var(--brand-primary, #371f20)', color: 'var(--brand-text, #f9edd3)', fontFamily: '-apple-system, sans-serif' }}>
@@ -50,7 +58,8 @@ export default function App() {
     const brand = useBrand();
     useUi(); // перерисовать, когда придут тексты интерфейса на выбранном языке
     const [user, setUser] = useState(null);
-    const [view, setView] = useState('main'); // 'main' или 'admin'
+    const [view, setViewState] = useState(() => storedView() || 'main'); // 'system' | 'admin' | 'main' | 'urgent' | 'main-work'
+    const setView = (v) => { storeView(v); setViewState(v); };
     // Что показывать без пользователя: 'checking' (спрашиваем сервер) | 'welcome' | 'login'
     const [screen, setScreen] = useState('checking');
     
@@ -69,8 +78,10 @@ export default function App() {
         setUser(null);
         setUsername('');
         setPassword('');
-        setView('main');
+        setView(null);
+        setViewState('main');
         setScreen('welcome');
+        loadPublicBrand();
     };
 
     useEffect(() => {
@@ -99,6 +110,7 @@ export default function App() {
                 }
                 cacheUser(u);
                 setLoginLang(u.lang || 'en');
+                if (!storedView()) setView(homeView(u));
                 setUser(u);
                 dropLangParam();
                 return;
@@ -171,7 +183,7 @@ export default function App() {
                 cacheUser(loggedInUser, remember);
                 setPassword('');
                 setUser(loggedInUser);
-                setView('main');
+                setView(homeView(loggedInUser));
                 dropLangParam();
             } else {
                 setLoginError(uiText('login', loginLang).error);
@@ -256,15 +268,30 @@ export default function App() {
 
     // Безопасное определение роли и прав сисадмина
     const role = user.role ? String(user.role).trim().toLowerCase() : '';
-    const isSysAdmin = Number(user.sysadmin) === 1;
+    const isSuper = Number(user.is_superadmin) === 1;
+    const isSysAdmin = isSuper || Number(user.sysadmin) === 1;
 
-    // Если сисадмин нажал кнопку перехода в глобальную админку
+    // Владелец системы: общая админка — отели, шаблоны, языки
+    if (view === 'system' && isSuper) {
+        return (
+            <SystemAdmin
+                user={user}
+                onChangeLang={handleChangeLang}
+                onLogout={handleLogout}
+                onOpenHotel={async (id) => { storeView('admin'); if (!(await switchHotel(id))) storeView('system'); }}
+            />
+        );
+    }
+
+    // Админка отеля: администратор отеля попадает сюда сразу, владелец системы — из общей админки
     if (view === 'admin' && isSysAdmin) {
         return (
-            <AdminDashboard 
-                user={user} 
-                onBack={() => setView('main')} 
-                onChangeLang={handleChangeLang} 
+            <AdminDashboard
+                user={user}
+                onBack={() => setView(isSuper ? 'system' : 'main')}
+                backLabel={isSuper ? uiText('admin_dash', user.lang).back_system : undefined}
+                onChangeLang={handleChangeLang}
+                onLogout={handleLogout}
             />
         );
     }

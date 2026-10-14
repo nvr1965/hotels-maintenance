@@ -18,9 +18,12 @@ import { uiText, dirOf } from '../i18n';
 
 const ALL_TABS = ['users', 'departments', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'templates', 'languages', 'db'];
 
-export default function AdminDashboard({ user, onBack, onChangeLang }) {
-    // «Сеть» — администраторам сети и владельцу, «База данных» — только владельцу системы
-    const TABS = ALL_TABS.filter(k => (k !== 'network' || user.is_superadmin || isOrgAdmin()) && (!['db', 'languages', 'templates'].includes(k) || user.is_superadmin));
+export default function AdminDashboard({ user, onBack, backLabel, onChangeLang, onLogout }) {
+    // Отели, шаблоны и языки у владельца системы — в общей админке (SystemAdmin), здесь только то, что внутри отеля.
+    // «Сеть» — администраторам сети, «База данных» — владельцу системы.
+    const TABS = ALL_TABS.filter(k => !['templates', 'languages'].includes(k)
+        && (k !== 'network' || (!user.is_superadmin && isOrgAdmin()))
+        && (k !== 'db' || user.is_superadmin));
     const lang = user.lang || 'en';
     const text = uiText('admin_dash', lang);
     const dir = dirOf(lang);
@@ -60,13 +63,13 @@ export default function AdminDashboard({ user, onBack, onChangeLang }) {
                         onClick={onBack}
                         style={{ padding: '8px 14px', background: 'var(--brand-accent, #cdaa7c)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', color: 'var(--brand-primary, #371f20)' }}
                     >
-                        {text.back}
+                        {backLabel || text.back}
                     </button>
                     <BrandEmblem size={40} />
                     <h2 style={{ margin: 0, color: 'var(--brand-text, #f9edd3)' }}>{text.title}</h2>
                 </div>
 
-                <AppMenu lang={lang} onChangeLang={onChangeLang} />
+                <AppMenu lang={lang} onChangeLang={onChangeLang} onLogout={onLogout} />
             </div>
 
             <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', background: '#f3ece6', borderRadius: '12px 12px 0 0', overflow: 'hidden' }}>
