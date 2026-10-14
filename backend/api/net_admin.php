@@ -200,16 +200,25 @@ if ($action === 'hotel_save') {
         $from = (int)($in['copy_from_hotel_id'] ?? 0);
         // Копировать можно только из отеля, к которому есть доступ администратора
         if ($from && !net_can_manage_hotel($me, $from) && !app_is_org_admin($me, (int)(net_hotel($from)['org_id'] ?? 0))) api_fail('forbidden', [], 403);
-        [$id, $copied] = db_tx(function () use ($cols, $data, $from) {
+        // Шаблон структуры (корпуса, этажи, номера) — только у владельца системы
+        $tplId = (int)($in['template_id'] ?? 0);
+        $tpl = null;
+        if ($tplId) {
+            if ($me['is_superadmin'] !== 1) api_fail('forbidden', [], 403);
+            $row = db_one("SELECT structure FROM hotel_templates WHERE id = ?", [$tplId]);
+            if (!$row) api_fail('template_not_found');
+            $tpl = tpl_normalize(db_json($row['structure']));
+        }
+        [$id, $copied, $built] = db_tx(function () use ($cols, $data, $from, $tpl) {
             $id = (int)db_value("INSERT INTO hotels (" . implode(', ', $cols) . ") VALUES (" . implode(', ', array_fill(0, count($cols), '?')) . ") RETURNING id",
                 array_values($data));
             if (!$from) dep_create_default($id);
-            return [$id, $from ? net_copy_dictionaries($from, $id) : null];
+            return [$id, $from ? net_copy_dictionaries($from, $id) : null, $tpl ? tpl_apply($id, $tpl) : null];
         });
         audit($me, 'insert', 'hotels', $id, null, net_hotel($id), $id, $orgId);
         // Скопированные справочники дописываются на языки нового отеля уже после ответа
-        if ($copied) api_ok_then(['id' => $id, 'copied' => $copied], fn() => i18n_fill_hotel($id, $langs));
-        api_ok(['id' => $id, 'copied' => $copied]);
+        if ($copied || $built) api_ok_then(['id' => $id, 'copied' => $copied, 'built' => $built], fn() => i18n_fill_hotel($id, $langs));
+        api_ok(['id' => $id, 'copied' => $copied, 'built' => $built]);
     }
     db_exec("UPDATE hotels SET " . implode(', ', array_map(fn($c) => "$c = ?", $cols)) . " WHERE id = ?",
         array_merge(array_values($data), [$id]));

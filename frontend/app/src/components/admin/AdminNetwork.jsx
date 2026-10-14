@@ -20,7 +20,7 @@ const blankHotel = (orgId) => ({
     id: 0, org_id: orgId, name: '', slug: '', address: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     languages: ['en'], default_lang: 'en', brand_title: {},
     brand_subtitle: '', logo_url: '', color_primary: '#1f3a5f', color_accent: '#c9a96e', color_text: '#ffffff', color_button: '#1f3a5f',
-    active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0,
+    active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0, template_id: 0,
 });
 
 // Строка из списка отелей (net_admin hotels) → форма
@@ -85,7 +85,8 @@ export default function AdminNetwork({ lang }) {
         e.preventDefault();
         const d = await post('hotel_save', form);
         if (!d.success) return;
-        setMsg({ ok: true, text: form.id ? t.saved : d.copied ? t.created_copied(d.copied.asset_dictionary, d.copied.room_checklist_dict, d.copied.routine_tasks) : t.created });
+        setMsg({ ok: true, text: form.id ? t.saved : [d.copied ? t.created_copied(d.copied.asset_dictionary, d.copied.room_checklist_dict, d.copied.routine_tasks) : t.created,
+            d.built ? t.created_built(d.built.rooms, d.built.common) : ''].filter(Boolean).join('. ') });
         setForm(null);
         await loadOrg();
         // Правили текущий отель — сразу применить новое оформление
@@ -191,6 +192,12 @@ export default function AdminNetwork({ lang }) {
 }
 
 function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
+    // Шаблоны структуры (корпуса, этажи, номера) — только у владельца системы; у остальных список пуст
+    const [templates, setTemplates] = useState([]);
+    useEffect(() => {
+        if (form.id !== 0) return;
+        api('/backend/api/admin_templates.php?action=list').then(d => { if (d.success) setTemplates(d.items); });
+    }, [form.id]);
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
     const toggleLang = (l) => setForm(f => {
         const langs = f.languages.includes(l) ? f.languages.filter(x => x !== l) : ALL_LANGS().filter(x => x === l || f.languages.includes(x));
@@ -237,6 +244,14 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
                     </select>
                 </label>
             </div>
+            {form.id === 0 && templates.length > 0 && (
+                <label style={S.label}>{t.template}
+                    <select style={S.field} value={form.template_id || 0} onChange={e => set('template_id', Number(e.target.value))}>
+                        <option value={0}>{t.template_none}</option>
+                        {templates.map(x => <option key={x.id} value={x.id}>{x.name} — {t.template_sum(x.summary.buildings, x.summary.rooms)}</option>)}
+                    </select>
+                </label>
+            )}
             {form.id === 0 && (
                 <label style={S.label}>{t.copy_from}
                     <select style={S.field} value={form.copy_from_hotel_id} onChange={e => set('copy_from_hotel_id', Number(e.target.value))}>

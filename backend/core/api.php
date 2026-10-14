@@ -7,6 +7,7 @@ require_once __DIR__ . '/tenancy.php';
 require_once __DIR__ . '/translate.php';
 require_once __DIR__ . '/ui_text.php';
 require_once __DIR__ . '/departments.php';
+require_once __DIR__ . '/templates.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');

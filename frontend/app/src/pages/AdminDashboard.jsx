@@ -10,16 +10,17 @@ import AdminPending from '../components/admin/AdminPending';
 import AdminNetwork from '../components/admin/AdminNetwork';
 import AdminLanguages from '../components/admin/AdminLanguages';
 import AdminDepartments from '../components/admin/AdminDepartments';
+import AdminTemplates from '../components/admin/AdminTemplates';
 import { isOrgAdmin } from '../brand';
 import { tr, S, api } from '../components/admin/adminUi';
 import { uiText, dirOf } from '../i18n';
 
 
-const ALL_TABS = ['users', 'departments', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'languages', 'db'];
+const ALL_TABS = ['users', 'departments', 'dicts', 'assets', 'tasks', 'meters', 'pending', 'network', 'templates', 'languages', 'db'];
 
 export default function AdminDashboard({ user, onBack, onChangeLang }) {
     // «Сеть» — администраторам сети и владельцу, «База данных» — только владельцу системы
-    const TABS = ALL_TABS.filter(k => (k !== 'network' || user.is_superadmin || isOrgAdmin()) && ((k !== 'db' && k !== 'languages') || user.is_superadmin));
+    const TABS = ALL_TABS.filter(k => (k !== 'network' || user.is_superadmin || isOrgAdmin()) && (!['db', 'languages', 'templates'].includes(k) || user.is_superadmin));
     const lang = user.lang || 'en';
     const text = uiText('admin_dash', lang);
     const dir = dirOf(lang);
@@ -90,6 +91,7 @@ export default function AdminDashboard({ user, onBack, onChangeLang }) {
                 {activeTab === 'network' && <AdminNetwork lang={lang} />}
                 {activeTab === 'languages' && <AdminLanguages lang={lang} />}
                 {activeTab === 'departments' && <AdminDepartments lang={lang} />}
+                {activeTab === 'templates' && <AdminTemplates lang={lang} />}
                 {activeTab === 'db' && <AdminDb lang={lang} />}
                 {activeTab === 'tasks' && (tasks === null ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: '#6e635b' }}>{t.loading}</div>
