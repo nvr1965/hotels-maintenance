@@ -8,7 +8,8 @@ import { uiText } from '../../i18n';
 
 const API = '/backend/api/admin_templates.php';
 const blankBuilding = (name = '') => ({ name, floor_from: 1, floor_to: 3, room_from: 1, room_to: 3, rooms_per_floor: 10 });
-const blank = () => ({ id: 0, name: '', structure: { numbering: 'floor', buildings: [blankBuilding('A')], common: [] } });
+export const blankStructure = () => ({ numbering: 'floor', buildings: [blankBuilding('A')], common: [] });
+const blank = () => ({ id: 0, name: '', structure: blankStructure() });
 
 export default function AdminTemplates({ lang }) {
     const t = { ...tr(lang), ...uiText('tpl', lang) };
@@ -91,10 +92,28 @@ export default function AdminTemplates({ lang }) {
 }
 
 function TemplateForm({ t, lang, form, setForm, busy, onSubmit, onCancel }) {
-    const st = form.structure;
-    const setSt = (patch) => setForm(f => ({ ...f, structure: { ...f.structure, ...patch } }));
-    const setB = (i, k, v) => setSt({ buildings: st.buildings.map((b, n) => (n === i ? { ...b, [k]: v } : b)) });
-    const setC = (i, patch) => setSt({ common: st.common.map((c, n) => (n === i ? { ...c, ...patch } : c)) });
+    const [preview, setPreview] = useState(null);
+    const setStructure = (fn) => setForm(f => ({ ...f, structure: fn(f.structure) }));
+    return (
+        <form onSubmit={onSubmit} style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <label style={S.label}>{t.name}
+                <input style={S.field} required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder={t.name_ph} />
+            </label>
+            <StructureEditor t={t} lang={lang} structure={form.structure} setStructure={setStructure} onPreview={setPreview} />
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button type="submit" style={S.primary} disabled={busy || !preview?.success}>{t.save}</button>
+                <button type="button" style={S.btn} onClick={onCancel}>{t.cancel}</button>
+            </div>
+        </form>
+    );
+}
+
+/** Структура отеля: нумерация, корпуса, общие объекты и сводка «что получится» с сервера.
+ *  Общая для шаблона и для нового отеля («Сеть и отели»). setStructure(fn) — fn(старая) → новая. */
+export function StructureEditor({ t, lang, structure: st, setStructure, onPreview }) {
+    const setSt = (patch) => setStructure(s => ({ ...s, ...patch }));
+    const setB = (i, k, v) => setStructure(s => ({ ...s, buildings: s.buildings.map((b, n) => (n === i ? { ...b, [k]: v } : b)) }));
+    const setC = (i, patch) => setStructure(s => ({ ...s, common: s.common.map((c, n) => (n === i ? { ...c, ...patch } : c)) }));
     const num = (v) => (v === '' || v === '-' ? v : Number(v));
 
     // Сводка «что получится» — с сервера, чтобы совпадала с тем, что он заведёт
@@ -105,17 +124,14 @@ function TemplateForm({ t, lang, form, setForm, busy, onSubmit, onCancel }) {
         timer.current = setTimeout(async () => {
             const d = await api(`${API}?action=preview`, { structure: st });
             setPreview(d);
+            onPreview?.(d);
         }, 400);
         return () => clearTimeout(timer.current);
-    }, [st]);
+    }, [st]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const cell = { ...S.field, width: '76px', padding: '7px 8px' };
     return (
-        <form onSubmit={onSubmit} style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <label style={S.label}>{t.name}
-                <input style={S.field} required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder={t.name_ph} />
-            </label>
-
+        <>
             <div style={S.label}>{t.numbering}
                 <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontWeight: 400 }}>
                     {['floor', 'sequential'].map(v => (
@@ -194,10 +210,6 @@ function TemplateForm({ t, lang, form, setForm, busy, onSubmit, onCancel }) {
                 </div>
             )}
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button type="submit" style={S.primary} disabled={busy || !preview?.success}>{t.save}</button>
-                <button type="button" style={S.btn} onClick={onCancel}>{t.cancel}</button>
-            </div>
-        </form>
+        </>
     );
 }

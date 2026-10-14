@@ -201,9 +201,13 @@ if ($action === 'hotel_save') {
         // Копировать можно только из отеля, к которому есть доступ администратора
         if ($from && !net_can_manage_hotel($me, $from) && !app_is_org_admin($me, (int)(net_hotel($from)['org_id'] ?? 0))) api_fail('forbidden', [], 403);
         // Шаблон структуры (корпуса, этажи, номера) — только у владельца системы
+        // structure — шаблон, поправленный в форме нового отеля; template_id — шаблон как есть
         $tplId = (int)($in['template_id'] ?? 0);
         $tpl = null;
-        if ($tplId) {
+        if (is_array($in['structure'] ?? null)) {
+            if ($me['is_superadmin'] !== 1) api_fail('forbidden', [], 403);
+            $tpl = tpl_normalize($in['structure']);
+        } elseif ($tplId > 0) {
             if ($me['is_superadmin'] !== 1) api_fail('forbidden', [], 403);
             $row = db_one("SELECT structure FROM hotel_templates WHERE id = ?", [$tplId]);
             if (!$row) api_fail('template_not_found');

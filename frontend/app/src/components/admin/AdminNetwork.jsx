@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { tr, api, errText, S, Message, langName, languageList } from './adminUi';
 import { setBrand, getBrand } from '../../brand';
 import { uiText } from '../../i18n';
+import { StructureEditor, blankStructure } from './AdminTemplates';
 
 // Админка → Сеть (для администраторов сети и владельца системы): отели сети с настройками и брендингом,
 // новый отель с копией справочников, люди в отелях сети, администраторы и наблюдатели сети.
@@ -20,7 +21,7 @@ const blankHotel = (orgId) => ({
     id: 0, org_id: orgId, name: '', slug: '', address: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     languages: ['en'], default_lang: 'en', brand_title: {},
     brand_subtitle: '', logo_url: '', color_primary: '#1f3a5f', color_accent: '#c9a96e', color_text: '#ffffff', color_button: '#1f3a5f',
-    active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0, template_id: 0,
+    active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0, template_id: 0, structure: null,
 });
 
 // Строка из списка отелей (net_admin hotels) → форма
@@ -152,7 +153,7 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
                         <button type="button" style={S.primary} onClick={() => { setMsg(null); setForm(blankHotel(orgId)); }}>{t.new_hotel}</button>
                     </div>
 
-                    {form && form.id === 0 && <HotelForm t={t} form={form} setForm={setForm} hotels={hotels || []} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />}
+                    {form && form.id === 0 && <HotelForm t={t} lang={lang} form={form} setForm={setForm} hotels={hotels || []} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />}
 
                     {hotels === null ? <div style={S.hint}>{t.loading}</div> : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -176,7 +177,7 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
                                     </div>
                                     {form && form.id === h.id && (
                                         <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                            <HotelForm t={t} form={form} setForm={setForm} hotels={hotels} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />
+                                            <HotelForm t={t} lang={lang} form={form} setForm={setForm} hotels={hotels} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />
                                             <HotelPeople t={t} hotelId={h.id} hotels={hotels} setMsg={setMsg} fail={fail} />
                                         </div>
                                     )}
@@ -192,13 +193,22 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
     );
 }
 
-function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
+function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel }) {
     // Шаблоны структуры (корпуса, этажи, номера) — только у владельца системы; у остальных список пуст
-    const [templates, setTemplates] = useState([]);
+    // Выбранный шаблон копируется в форму и правится тут же; сам шаблон не меняется
+    const [templates, setTemplates] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const tt = { ...t, ...uiText('tpl', lang) };
     useEffect(() => {
         if (form.id !== 0) return;
         api('/backend/api/admin_templates.php?action=list').then(d => { if (d.success) setTemplates(d.items); });
     }, [form.id]);
+    const pickTemplate = (id) => {
+        const x = templates.find(v => v.id === id);
+        setPreview(null);
+        setForm(f => ({ ...f, template_id: id, structure: id === 0 ? null : x ? JSON.parse(JSON.stringify(x.structure)) : blankStructure() }));
+    };
+    const structureBad = form.structure && !preview?.success;
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
     const toggleLang = (l) => setForm(f => {
         const langs = f.languages.includes(l) ? f.languages.filter(x => x !== l) : ALL_LANGS().filter(x => x === l || f.languages.includes(x));
@@ -245,13 +255,23 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
                     </select>
                 </label>
             </div>
-            {form.id === 0 && templates.length > 0 && (
-                <label style={S.label}>{t.template}
-                    <select style={S.field} value={form.template_id || 0} onChange={e => set('template_id', Number(e.target.value))}>
-                        <option value={0}>{t.template_none}</option>
-                        {templates.map(x => <option key={x.id} value={x.id}>{x.name} — {t.template_sum(x.summary.buildings, x.summary.rooms)}</option>)}
-                    </select>
-                </label>
+            {form.id === 0 && templates && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <label style={S.label}>{t.template}
+                        <select style={S.field} value={form.template_id || 0} onChange={e => pickTemplate(Number(e.target.value))}>
+                            <option value={0}>{t.template_none}</option>
+                            {templates.map(x => <option key={x.id} value={x.id}>{x.name} — {t.template_sum(x.summary.buildings, x.summary.rooms)}</option>)}
+                            <option value={-1}>{t.template_own}</option>
+                        </select>
+                    </label>
+                    {form.structure && (
+                        <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div style={S.hint}>{t.template_edit_hint}</div>
+                            <StructureEditor t={tt} lang={lang} structure={form.structure}
+                                setStructure={(fn) => setForm(f => ({ ...f, structure: fn(f.structure) }))} onPreview={setPreview} />
+                        </div>
+                    )}
+                </div>
             )}
             {form.id === 0 && (
                 <label style={S.label}>{t.copy_from}
@@ -313,7 +333,7 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
+                <button type="submit" style={S.primary} disabled={busy || structureBad}>{t.save}</button>
                 <button type="button" style={S.btn} onClick={onCancel}>{t.cancel}</button>
             </div>
         </form>
