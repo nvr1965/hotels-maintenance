@@ -35,6 +35,21 @@ const toForm = (h) => ({
 });
 
 // Все включённые языки системы (страница «Языки»), по порядку
+// Готовые цветовые гаммы: шапка, акцент, текст шапки, кнопки. После выбора каждый цвет можно поправить.
+const PALETTES = [
+    ['navy', '#1f3a5f', '#c9a96e', '#ffffff', '#1f3a5f'],
+    ['bordeaux', '#4a1c26', '#d4af7a', '#f9edd3', '#844128'],
+    ['forest', '#1f4d3a', '#c8b88a', '#f4f1e8', '#2f6f4f'],
+    ['ocean', '#0f4c5c', '#7fd1c8', '#ffffff', '#1f7a8c'],
+    ['graphite', '#2b2d31', '#e0b354', '#ffffff', '#3d4148'],
+    ['terracotta', '#7a3b2e', '#f0c27b', '#fff7ec', '#b5562f'],
+    ['violet', '#3b2a5c', '#e6c27a', '#ffffff', '#5b3f8c'],
+    ['sky', '#1e5aa8', '#ffd166', '#ffffff', '#2a74d0'],
+    ['olive', '#4a5a2a', '#e8d39a', '#fbf8ef', '#6b7f3a'],
+    ['rose', '#6b2f4a', '#f2c6d0', '#ffffff', '#9c3d6b'],
+];
+
+const SHOW_ORG_PEOPLE = false;
 const ALL_LANGS = () => languageList().map(l => l.code);
 
 const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
@@ -186,7 +201,8 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
                         </div>
                     )}
 
-                    <OrgPeople t={t} orgId={orgId} hotels={hotels || []} people={orgPeople} reload={loadOrg} post={post} setMsg={setMsg} busy={busy} />
+                    {/* Администраторы и наблюдатели сети — роль отложена, блок скрыт */}
+                    {SHOW_ORG_PEOPLE && <OrgPeople t={t} orgId={orgId} hotels={hotels || []} people={orgPeople} reload={loadOrg} post={post} setMsg={setMsg} busy={busy} />}
                 </>
             )}
         </div>
@@ -300,6 +316,23 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
                 <label style={S.label}>{t.logo}
                     <input style={S.field} dir="ltr" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} />
                 </label>
+            </div>
+            <div style={S.label}>{t.palettes}
+                <div style={{ display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', fontWeight: 400 }}>
+                    {PALETTES.map(([key, primary, accent, text, button]) => {
+                        const on = form.color_primary === primary && form.color_accent === accent && form.color_text === text && form.color_button === button;
+                        return (
+                            <button key={key} type="button" aria-pressed={on}
+                                onClick={() => setForm(f => ({ ...f, color_primary: primary, color_accent: accent, color_text: text, color_button: button }))}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '10px', cursor: 'pointer', background: primary, color: text,
+                                    border: on ? '3px solid #2b2320' : '3px solid transparent', boxShadow: '0 0 0 1px #d9cec5', fontFamily: 'inherit', fontSize: '14px', textAlign: 'start' }}>
+                                <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: accent, flex: 'none' }} />
+                                <span style={{ flex: 1, minWidth: 0 }}>{t['pal_' + key]}</span>
+                                <span style={{ width: '14px', height: '20px', borderRadius: '4px', background: button, flex: 'none', boxShadow: '0 0 0 1px rgba(255,255,255,0.5)' }} />
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 {['color_primary', 'color_accent', 'color_text', 'color_button'].map(c => (
