@@ -55,7 +55,8 @@ function net_user_from_input(array $me, array $in): array
 {
     $uid = (int)($in['user_id'] ?? 0);
     if ($uid) {
-        $u = db_one("SELECT * FROM users WHERE id = ?", [$uid]);
+        // Системные пользователи (владелец, поддержка) в отели и сети не добавляются
+        $u = db_one("SELECT * FROM users WHERE id = ? AND system_role IS NULL", [$uid]);
         if (!$u) api_fail('user_not_found');
         return $u;
     }

@@ -3,19 +3,23 @@ import AppMenu from '../components/AppMenu';
 import AdminNetwork from '../components/admin/AdminNetwork';
 import AdminTemplates from '../components/admin/AdminTemplates';
 import AdminLanguages from '../components/admin/AdminLanguages';
+import SystemUsers from '../components/admin/SystemUsers';
+import { useBrand } from '../brand';
 import { tr } from '../components/admin/adminUi';
 import { uiText, dirOf } from '../i18n';
 
-// Общая админка владельца системы: отели (создать, назначить мастер-админа, войти в отель),
-// шаблоны структуры, языки. Всё, что внутри отеля, — в админке отеля (AdminDashboard).
+// Общая админка: у владельца системы — отели (создать, назначить мастер-админа, войти в отель),
+// пользователи системы, шаблоны структуры, языки; у поддержки — только список отелей, чтобы войти в нужный. Всё, что внутри отеля, — в админке отеля (AdminDashboard).
 // Цвета свои, не отеля: это уровень над отелями.
 
-const TABS = ['hotels', 'templates', 'languages'];
+const ALL_TABS = ['hotels', 'users', 'templates', 'languages'];
 const NAVY = '#1f3a5f';
 
 export default function SystemAdmin({ user, onChangeLang, onLogout, onOpenHotel }) {
     const lang = user.lang || 'en';
-    const t = { ...tr(lang), ...uiText('sys', lang) };
+    const t = { ...tr(lang), ...uiText('sys', lang), ...uiText('network', lang) };
+    const isSuper = Number(user.is_superadmin) === 1;
+    const TABS = isSuper ? ALL_TABS : ['hotels'];
     const [tab, setTab] = useState(() => {
         try { return TABS.includes(sessionStorage.getItem('hotelapp_sys_tab')) ? sessionStorage.getItem('hotelapp_sys_tab') : 'hotels'; } catch { return 'hotels'; }
     });
@@ -47,10 +51,30 @@ export default function SystemAdmin({ user, onChangeLang, onLogout, onOpenHotel 
                 ))}
             </div>
             <div style={{ background: '#fff', padding: '18px', borderRadius: '0 0 12px 12px', border: '1px solid #d8dee6', borderTop: 'none', minWidth: 0 }}>
-                {tab === 'hotels' && <AdminNetwork lang={lang} onOpenHotel={onOpenHotel} />}
+                {tab === 'hotels' && (isSuper ? <AdminNetwork lang={lang} onOpenHotel={onOpenHotel} /> : <HotelList t={t} onOpenHotel={onOpenHotel} />)}
+                {tab === 'users' && <SystemUsers lang={lang} />}
                 {tab === 'templates' && <AdminTemplates lang={lang} />}
                 {tab === 'languages' && <AdminLanguages lang={lang} />}
             </div>
+        </div>
+    );
+}
+
+// Поддержка: все отели, кнопка «Войти в отель»
+function HotelList({ t, onOpenHotel }) {
+    const { hotels } = useBrand();
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {(hotels || []).map(h => (
+                <div key={h.id} style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', padding: '12px 14px', border: '1px solid #e2e7ee', borderRadius: '10px' }}>
+                    <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                        <b style={{ fontSize: '17px' }}>{h.name}</b>
+                        {h.org_name && <div style={{ fontSize: '14px', color: '#6e635b' }}>{h.org_name}</div>}
+                    </div>
+                    <button type="button" onClick={() => onOpenHotel(h.id)}
+                        style={{ padding: '10px 16px', background: NAVY, color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>{t.open_hotel}</button>
+                </div>
+            ))}
         </div>
     );
 }

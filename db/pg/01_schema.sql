@@ -367,4 +367,15 @@ CREATE TABLE IF NOT EXISTS hotel_templates (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- ---------------------------------------------------------------- системные пользователи
+-- Над отелями: superadmin (владелец системы) и support (поддержка: входит в любой отель помочь).
+-- Заводятся в общей админке, в отели не входят как сотрудники и в списках отелей не видны.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS system_role text CHECK (system_role IN ('superadmin', 'support'));
+UPDATE users SET system_role = 'superadmin' WHERE is_superadmin AND system_role IS NULL;
+UPDATE users SET is_superadmin = (system_role IS NOT DISTINCT FROM 'superadmin')
+    WHERE is_superadmin <> (system_role IS NOT DISTINCT FROM 'superadmin');
+DELETE FROM member_departments WHERE user_id IN (SELECT id FROM users WHERE system_role IS NOT NULL);
+DELETE FROM hotel_members      WHERE user_id IN (SELECT id FROM users WHERE system_role IS NOT NULL);
+DELETE FROM org_members        WHERE user_id IN (SELECT id FROM users WHERE system_role IS NOT NULL);
+
 COMMIT;

@@ -3,6 +3,8 @@
  *
  * Права складываются так (сильнейшее побеждает):
  *   users.is_superadmin           — владелец системы: все отели всех сетей, как администратор отеля;
+ *   users.system_role = support   — поддержка: все отели, как администратор отеля (общая админка без шаблонов и языков);
+ *                                   системные пользователи в отелях не числятся (нет строк hotel_members / org_members);
  *   org_members.role = org_admin   — администратор сети: все отели своей сети, как администратор отеля;
  *   org_members.role = org_viewer  — наблюдатель сети: все отели сети, только отчёты (роль viewer);
  *   hotel_members                  — роль в конкретном отеле: worker / manager / head + флаг is_admin.
@@ -35,9 +37,10 @@ function app_user_hotels(array $user): array
 
     $hotelCols = "h.*, o.name AS org_name";
 
-    if ((int)$user['is_superadmin'] === 1) {
+    $system = (int)$user['is_superadmin'] === 1 ? 'super' : (($user['system_role'] ?? null) === 'support' ? 'support' : null);
+    if ($system) {
         foreach (db_all("SELECT $hotelCols FROM hotels h JOIN organizations o ON o.id = h.org_id
-                         WHERE h.active ORDER BY o.name, h.name") as $h) $add($h, 'head', 1, 'super');
+                         WHERE h.active ORDER BY o.name, h.name") as $h) $add($h, 'head', 1, $system);
     }
 
     foreach (db_all("SELECT $hotelCols, om.role AS org_role FROM org_members om
@@ -165,6 +168,7 @@ function app_current(bool $keepOpen = false): ?array
         'name'          => $user['display_name'],
         'lang'          => $user['session_lang'],
         'is_superadmin' => (int)$user['is_superadmin'],
+        'system_role'   => $user['system_role'] ?? null,
         'hotel_id'      => $cur ? (int)$want : null,
         'hotel'         => $cur ? $cur['hotel'] : null,
         'role'          => $cur ? $cur['role'] : null,
@@ -229,6 +233,7 @@ function app_me_payload(array $me): array
     }
     $user = ['id' => $me['id'], 'login' => $me['login'], 'name' => $me['name'], 'lang' => $me['lang'],
              'role' => $me['role'], 'is_admin' => $me['is_admin'], 'is_superadmin' => $me['is_superadmin'],
+             'system_role' => $me['system_role'],
              // как в Ramada, чтобы старый интерфейс работал без переделки
              'sysadmin' => $me['is_admin']];
     return [

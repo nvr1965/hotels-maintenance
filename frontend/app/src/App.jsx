@@ -23,10 +23,10 @@ function isPhoneOrInstalledApp() {
 
 // Окно отеля с выбором языка: заголовки на языках отеля из его настроек.
 // Показывается, пока никто не вошёл (в том числе после выхода из приложения).
-// Куда попадает вошедший: владелец системы — в общую админку, администратор отеля — в админку отеля,
+// Куда попадает вошедший: владелец системы и поддержка — в общую админку, администратор отеля — в админку отеля,
 // остальные — в рабочую панель. Выбранный экран помнится до закрытия вкладки.
 const VIEW_KEY = 'hotelapp_view';
-const homeView = (u) => (Number(u?.is_superadmin) === 1 ? 'system' : Number(u?.is_admin) === 1 ? 'admin' : 'main');
+const homeView = (u) => (Number(u?.is_superadmin) === 1 || u?.system_role ? 'system' : Number(u?.is_admin) === 1 ? 'admin' : 'main');
 const storedView = () => { try { return sessionStorage.getItem(VIEW_KEY); } catch { return null; } };
 const storeView = (v) => { try { if (v) sessionStorage.setItem(VIEW_KEY, v); else sessionStorage.removeItem(VIEW_KEY); } catch { /* не страшно */ } };
 
@@ -268,7 +268,7 @@ export default function App() {
 
     // Безопасное определение роли и прав сисадмина
     const role = user.role ? String(user.role).trim().toLowerCase() : '';
-    const isSuper = Number(user.is_superadmin) === 1;
+    const isSuper = Number(user.is_superadmin) === 1 || !!user.system_role; // системный пользователь
     const isSysAdmin = isSuper || Number(user.sysadmin) === 1;
 
     // Владелец системы: общая админка — отели, шаблоны, языки
