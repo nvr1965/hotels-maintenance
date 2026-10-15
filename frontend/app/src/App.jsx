@@ -4,10 +4,11 @@ import ManagerDashboard from './pages/ManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import SystemAdmin from './pages/SystemAdmin';
 import { BrandLogo, BrandEmblem } from './components/BrandLogo';
+import LangPicker from './components/LangPicker';
 import { disablePush } from './notify/push';
 import { readCachedUser, cacheUser, clearCachedUser, fetchMe, login, logout, saveLang, installUnauthorizedHook, dropLangParam } from './auth';
-import { setBrand, getBrand, useBrand, hotelTitle, loadPublicBrand, switchHotel } from './brand';
-import { uiText, dirOf, languageList, langName, loadUi, useUi } from './i18n';
+import { setBrand, getBrand, useBrand, loadPublicBrand, switchHotel } from './brand';
+import { uiText, dirOf, languageList, loadUi, useUi } from './i18n';
 
 
 // Телефон/планшет или приложение, установленное на экран (PWA)
@@ -21,8 +22,6 @@ function isPhoneOrInstalledApp() {
     }
 }
 
-// Окно отеля с выбором языка: заголовки на языках отеля из его настроек.
-// Показывается, пока никто не вошёл (в том числе после выхода из приложения).
 // Куда попадает вошедший: владелец системы и поддержка — в общую админку, администратор отеля — в админку отеля,
 // остальные — в рабочую панель. Выбранный экран помнится до закрытия вкладки.
 const VIEW_KEY = 'hotelapp_view';
@@ -30,28 +29,17 @@ const homeView = (u) => (Number(u?.is_superadmin) === 1 || u?.system_role ? 'sys
 const storedView = () => { try { return sessionStorage.getItem(VIEW_KEY); } catch { return null; } };
 const storeView = (v) => { try { if (v) sessionStorage.setItem(VIEW_KEY, v); else sessionStorage.removeItem(VIEW_KEY); } catch { /* не страшно */ } };
 
+// Языки экрана входа: языки отеля (вход по ссылке отеля), иначе все языки системы
 const hotelLangs = (hotel) => (hotel?.languages?.length ? hotel.languages : languageList().map((l) => l.code));
 
-function WelcomeScreen({ onPick }) {
-    const { hotel } = useBrand();
-    const WELCOME = hotelLangs(hotel).map((lang) => ({
-        lang, dir: dirOf(lang), text: (hotel && hotelTitle(hotel, lang)) || langName(lang)
-    }));
-    return (
-        <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box', background: 'var(--brand-primary, #371f20)', color: 'var(--brand-text, #f9edd3)', fontFamily: '-apple-system, sans-serif' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '16px', padding: '36px 24px', maxWidth: '700px', width: '100%', boxSizing: 'border-box', boxShadow: '0 8px 32px 0 rgba(90, 30, 15, 0.25)', border: '1px solid rgba(205, 170, 124, 0.35)', textAlign: 'center' }}>
-                <BrandLogo size={64} style={{ marginBottom: '30px' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {WELCOME.map(w => (
-                        <button key={w.lang} type="button" dir={w.dir} onClick={() => onPick(w.lang)}
-                            style={{ background: 'rgba(205, 170, 124, 0.14)', padding: '18px 24px', borderRadius: '10px', border: '1px solid rgba(205, 170, 124, 0.45)', color: 'var(--brand-text, #f9edd3)', cursor: 'pointer', fontSize: '1.5rem', fontWeight: 500, fontFamily: 'inherit' }}>
-                            {w.text}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+// Язык браузера, если он есть среди доступных (точно, потом без региона), иначе язык отеля, иначе английский
+function browserLang(available, fallback) {
+    const has = (c) => available.find((a) => a.toLowerCase() === String(c).toLowerCase());
+    for (const l of navigator.languages?.length ? navigator.languages : [navigator.language || '']) {
+        const hit = has(l) || has(String(l).split('-')[0]);
+        if (hit) return hit;
+    }
+    return has(fallback || '') || has('en') || available[0] || 'en';
 }
 
 export default function App() {
@@ -60,10 +48,12 @@ export default function App() {
     const [user, setUser] = useState(null);
     const [view, setViewState] = useState(() => storedView() || 'main'); // 'system' | 'admin' | 'main' | 'urgent' | 'main-work'
     const setView = (v) => { storeView(v); setViewState(v); };
-    // Что показывать без пользователя: 'checking' (спрашиваем сервер) | 'welcome' | 'login'
+    // Что показывать без пользователя: 'checking' (спрашиваем сервер) | 'login'
     const [screen, setScreen] = useState('checking');
     
-    const [loginLang, setLoginLang] = useState(() => getBrand().hotel?.default_lang || 'en');
+    const [loginLang, setLoginLang] = useState(() => browserLang(hotelLangs(getBrand().hotel), getBrand().hotel?.default_lang));
+    // Язык выбран вручную (или пришёл в ?lang=) — больше не подстраиваемся под браузер
+    const [langPicked, setLangPicked] = useState(false);
     // На телефоне и в установленном приложении вход запоминается всегда (галочки нет),
     // на компьютере галочка есть и отмечена по умолчанию
     const [rememberMe, setRememberMe] = useState(true);
@@ -80,7 +70,8 @@ export default function App() {
         setPassword('');
         setView(null);
         setViewState('main');
-        setScreen('welcome');
+        setLangPicked(false);
+        setScreen('login');
         loadPublicBrand();
     };
 
@@ -133,12 +124,10 @@ export default function App() {
             if (cancelled) return;
 
             if (pickedLang) {
-                // Пришёл из окна выбора языка (index.php) — сразу форма входа
                 setLoginLang(pickedLang);
-                setScreen('login');
-            } else {
-                setScreen('welcome');
+                setLangPicked(true);
             }
+            setScreen('login');
         })();
 
         return () => { cancelled = true; };
@@ -147,6 +136,13 @@ export default function App() {
     // Тексты интерфейса на языке вошедшего (или выбранном на экране входа): сохранённые показываются сразу,
     // свежие приходят с сервера (новый язык сервер переводит сам)
     const uiLang = user?.lang || loginLang;
+
+    // Пока язык не выбран вручную — язык браузера среди языков отеля (список языков приходит с сервера чуть позже)
+    const langCount = languageList().length;
+    useEffect(() => {
+        if (user || langPicked) return;
+        setLoginLang(browserLang(hotelLangs(brand.hotel), brand.hotel?.default_lang));
+    }, [user, langPicked, brand.hotel, langCount]);
     useEffect(() => { loadUi(uiLang); }, [uiLang]);
 
     // Сервер перестал узнавать пользователя (истекла сессия, вход отозван) — обратно к окну отеля
@@ -202,10 +198,6 @@ export default function App() {
         );
     }
 
-    if (!user && screen === 'welcome') {
-        return <WelcomeScreen onPick={(lang) => { setLoginLang(lang); setLoginError(''); setScreen('login'); }} />;
-    }
-
     // ФОРМА ВХОДА
     if (!user) {
         const text = uiText('login', loginLang);
@@ -215,11 +207,11 @@ export default function App() {
         return (
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f7f1eb', direction: dir }}>
                 
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', fontWeight: 'bold' }}>
-                    {loginLangs.map((l) => (
-                        <span key={l} style={{ cursor: 'pointer', padding: '6px 12px', borderRadius: '6px', background: loginLang === l ? 'var(--brand-button, #844128)' : '#fff', color: loginLang === l ? '#fff' : '#3f3530' }} onClick={() => setLoginLang(l)}>{l.toUpperCase()}</span>
-                    ))}
-                </div>
+                {loginLangs.length > 1 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <LangPicker value={loginLang} langs={loginLangs} onPick={(l) => { setLoginLang(l); setLangPicked(true); setLoginError(''); }} />
+                    </div>
+                )}
 
                 <form onSubmit={handleLogin} style={{ background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', width: '320px', textAlign: 'center' }}>
                     

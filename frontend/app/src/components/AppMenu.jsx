@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { LogoutConfirm, logoutText } from './LogoutButton';
 import { useBrand, switchHotel } from '../brand';
 import { uiText, dirOf, languageList, langName } from '../i18n';
+import { LangFlag } from './LangPicker';
 
 
 
@@ -24,7 +25,7 @@ export default function AppMenu({ lang = 'en', onChangeLang, onLogout }) {
     const currentId = brand.hotel?.id;
     // Языки отеля (с названиями на самих языках); текущий язык показываем, даже если его нет в отеле
     const info = brand.hotel?.language_info?.length ? brand.hotel.language_info : languageList();
-    const langs = info.map(l => ({ code: l.code, name: l.name }));
+    const langs = info.map(l => ({ code: l.code, name: l.name })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
     if (!langs.some(l => l.code === lang)) langs.push({ code: lang, name: langName(lang) });
 
     useEffect(() => {
@@ -78,6 +79,7 @@ export default function AppMenu({ lang = 'en', onChangeLang, onLogout }) {
                         {langs.map(l => (
                             <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === lang} onClick={() => pickLang(l.code)} style={itemStyle(l.code === lang)}>
                                 <span style={{ width: '18px', color: 'var(--brand-button, #844128)' }}>{l.code === lang ? '✓' : ''}</span>
+                                <LangFlag code={l.code} size={20} />
                                 <span dir="auto">{l.name}</span>
                             </button>
                         ))}
