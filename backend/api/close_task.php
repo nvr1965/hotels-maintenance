@@ -19,13 +19,15 @@ $mediaJson = json_encode($media);
 $workerId  = $me['id']; // кто закрыл — из сессии, не из запроса
 
 if ($taskId === 0) api_fail('task_id_required');
+$opId = api_client_op($me, $input['client_op_id'] ?? null);
 
 // ================================================================
 //  РЕГЛАМЕНТНЫЕ ЗАДАЧИ
 // ================================================================
 if ($taskType === 'routine' || $taskType === 'regiment') {
     $statusStr = $isDone ? 'done' : 'pending';
-    $today = date('Y-m-d');
+    // Без связи закрыли вчера, а дошло сегодня — отметка ставится на тот день, когда закрыли
+    $today = date('Y-m-d', api_done_time($input['done_at'] ?? null));
 
     $task = db_one("SELECT requires_ocr FROM routine_tasks WHERE id = ? AND hotel_id = ?", [$taskId, $hid]);
     if (!$task) api_fail('not_found');
@@ -78,6 +80,7 @@ if ($taskType === 'routine' || $taskType === 'regiment') {
              $pending ? null : $sched['ocr_value'], $pending ? null : $sched['ocr_unit'],
              $pending ? METER_PENDING : $sched['ocr_raw'], !empty($input['is_repeat'])]);
 
+    api_client_op_done($opId, $me, $pending ? ['pending' => true] : []);
     api_ok($pending ? ['pending' => true] : []);
 }
 
@@ -104,6 +107,7 @@ db_tx(function () use ($input, $taskId, $hid, $statusStr, $notes, $notesLang, $m
         db_exec("UPDATE task_room_checks SET status = ? WHERE task_id = ? AND check_id = ?", [$st, $taskId, $checkId]);
     }
 });
+api_client_op_done($opId, $me);
 
 // Срочная выполнена — убрать уведомление о ней и уменьшить цифру на иконке
 if ($isDone && !in_array($type, ['planned', 'routine', 'regiment'], true)) {

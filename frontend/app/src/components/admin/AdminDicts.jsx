@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, Pills, langName, isRtl } from './adminUi';
+import { tr, api, errText, Message, Pills, langName, isRtl, Ic, Toggle, Search, PlusBtn, isWide } from './adminUi';
 
 // Админка → Справочники: регламентные работы, чек-лист номера, названия объектов.
 // Каждая запись на языках отеля; пустые языки сервер заполняет автопереводом при сохранении,
@@ -20,6 +20,8 @@ export default function AdminDicts({ lang }) {
     const [busy, setBusy] = useState(false);
     const [translating, setTranslating] = useState(false);
     const [filter, setFilter] = useState('');
+    const [open, setOpen] = useState(() => new Set());
+    const wide = isWide();
 
     const load = useCallback(async () => {
         setData(null);
@@ -34,6 +36,7 @@ export default function AdminDicts({ lang }) {
     const nameOf = (item) => item[col(dict, lang)] || LANGS.map(l => item[col(dict, l)]).find(Boolean) || item.key;
 
     const openNew = () => {
+        if (form && form.key === null) { setForm(null); return; }
         const values = {};
         fields.forEach(f => { values[f] = f === 'requires_ocr' ? 0 : ''; });
         setForm({ key: null, values });
@@ -85,97 +88,110 @@ export default function AdminDicts({ lang }) {
         else if (d.message !== 'in_use') setMsg({ ok: false, text: errText(t, d) });
     };
 
+    const flip = (k) => setOpen(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
     const items = (data?.items || []).filter(i => !filter || LANGS.some(l => String(i[col(dict, l)] || '').toLowerCase().includes(filter.toLowerCase())));
+    const ocrOn = form && !!Number(form.values.requires_ocr);
+    const ocrList = form && form.values.ocr_type && !OCR_TYPES.includes(form.values.ocr_type) ? [...OCR_TYPES, form.values.ocr_type] : OCR_TYPES;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <Pills value={dict} onChange={setDict} items={[['routine', t.dict_routine], ['checklist', t.dict_checklist], ['assets', t.dict_assets]]} />
-            <div style={S.hint}>{t['dict_' + dict + '_d']}</div>
+        <>
+            <div className="ad-pad"><Pills value={dict} onChange={setDict} items={[['routine', t.dict_routine], ['checklist', t.dict_checklist], ['assets', t.dict_assets]]} /></div>
+            <div className="ad-pad ad-hint">{t['dict_' + dict + '_d']}</div>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button type="button" style={S.primary} onClick={openNew} disabled={!data}>{t.new_item}</button>
-                <input style={{ ...S.field, flex: '1 1 200px', width: 'auto' }} placeholder={t.search} value={filter} onChange={e => setFilter(e.target.value)} />
-            </div>
+            <div className="ad-list">
+                <div className="ad-top">
+                    <PlusBtn on={form && form.key === null} disabled={!data} onClick={openNew}>{t.new_item}</PlusBtn>
+                    <Search value={filter} onChange={setFilter} placeholder={t.search} />
+                </div>
 
-            <Message msg={msg} />
+                <Message msg={msg} />
 
-            {form && (
-                <form onSubmit={save} style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={S.hint}>{t.translate_hint}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                        {LANGS.map(l => {
-                            const f = col(dict, l);
-                            if (!has(f)) return null;
-                            const label = langName(l);
+                {form && (
+                    <form onSubmit={save} className="ad-card form">
+                        {form.key !== null && <h3><Ic n="edit" />{nameOf(form.values) || form.key}</h3>}
+                        <div className="ad-hint">{t.translate_hint}</div>
+                        <div className="ad-form-grid">
+                            {LANGS.map(l => {
+                                const f = col(dict, l);
+                                if (!has(f)) return null;
+                                const label = langName(l);
+                                return (
+                                    <label key={l} className="ad-lab">{label}
+                                        <input className="ad-fld" dir={isRtl(l) ? 'rtl' : 'ltr'} lang={l} value={form.values[f] ?? ''} onChange={e => setVal(f, e.target.value)} />
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <div className="ad-btnrow">
+                            <button type="button" className="ad-btn" onClick={translate} disabled={translating}><Ic n="globe" />{translating ? t.translating : t.translate}</button>
+                        </div>
+                        {has('requires_ocr') && (
+                            <>
+                                <Toggle on={ocrOn} onChange={v => setVal('requires_ocr', v ? 1 : 0)}>{t.requires_ocr}</Toggle>
+                                {has('ocr_type') && ocrOn && (
+                                    <div className="ad-lab">{t.ocr_type}
+                                        <div className="ad-chips" role="radiogroup" aria-label={t.ocr_type}>
+                                            {ocrList.map(o => (
+                                                <button key={o} type="button" role="radio" aria-checked={form.values.ocr_type === o}
+                                                    className={'ad-chp sm' + (form.values.ocr_type === o ? ' on' : '')} onClick={() => setVal('ocr_type', o)}>{t['ocr_' + o] || o}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        <button type="submit" className="wk-done lg" disabled={busy}><Ic n="save" />{t.save}</button>
+                        <button type="button" className="ad-btn" style={{ alignSelf: 'center' }} onClick={() => setForm(null)}>{t.cancel}</button>
+                    </form>
+                )}
+
+                {!data ? <div className="ad-empty">{t.loading}</div> : (
+                    <div className="ad-grid">
+                        {items.length === 0 && <div className="ad-empty ad-full">{t.empty}</div>}
+                        {items.map(i => {
+                            const k = String(i.key);
+                            const isOpen = wide !== open.has(k);
+                            const ocr = !!Number(i.requires_ocr);
                             return (
-                                <label key={l} style={S.label}>{label}
-                                    <input style={S.field} dir={isRtl(l) ? 'rtl' : 'ltr'} lang={l} value={form.values[f] ?? ''} onChange={e => setVal(f, e.target.value)} />
-                                </label>
+                                <div key={k} className={'wk-tile' + (ocr ? ' ad-gold' : '') + (isOpen ? ' open' : '')}>
+                                    <div className="wk-row" role="button" tabIndex={0} aria-expanded={isOpen} onClick={() => flip(k)}
+                                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(k); } }}>
+                                        <div className="txt">
+                                            <div className="wk-place md">{ocr && <Ic n="gauge" />}{nameOf(i)}</div>
+                                            {ocr ? <div className="wk-sub">{t['ocr_' + i.ocr_type] || i.ocr_type || ''}</div>
+                                                : dict === 'assets' ? <div className="wk-sub">{t.term_en}: <span className="ad-mono">{i.key}</span></div> : null}
+                                        </div>
+                                        <span className={'ad-num' + (i.usage ? '' : ' empty')} title={t.usage}>{i.usage || 0}</span>
+                                    </div>
+                                    {isOpen && (
+                                        <div className="wk-more">
+                                            <div className="ad-lng">
+                                                {LANGS.filter(l => i[col(dict, l)]).map(l => (
+                                                    <FragmentLang key={l} l={l} v={i[col(dict, l)]} />
+                                                ))}
+                                            </div>
+                                            <div className="ad-kv">{t.usage}: <b>{i.usage || 0}</b>{dict !== 'assets' && <> · <bdi>#{i.key}</bdi></>}</div>
+                                            <div className="ad-btnrow">
+                                                <button type="button" className="ad-btn" onClick={() => openEdit(i)}><Ic n="edit" />{t.edit}</button>
+                                                <button type="button" className="ad-btn danger" disabled={busy} onClick={() => remove(i)}><Ic n="trash" />{t.delete}</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
-                    {has('requires_ocr') && (
-                        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontWeight: 600, cursor: 'pointer' }}>
-                                <input type="checkbox" checked={!!Number(form.values.requires_ocr)} onChange={e => setVal('requires_ocr', e.target.checked ? 1 : 0)}
-                                    style={{ width: '20px', height: '20px', accentColor: 'var(--brand-button, #844128)' }} />
-                                📷 {t.requires_ocr}
-                            </label>
-                            {has('ocr_type') && !!Number(form.values.requires_ocr) && (
-                                <select style={{ ...S.field, width: 'auto' }} value={form.values.ocr_type || ''} onChange={e => setVal('ocr_type', e.target.value)}>
-                                    <option value="">{t.ocr_type}…</option>
-                                    {OCR_TYPES.map(o => <option key={o} value={o}>{t['ocr_' + o]}</option>)}
-                                    {form.values.ocr_type && !OCR_TYPES.includes(form.values.ocr_type) && <option value={form.values.ocr_type}>{form.values.ocr_type}</option>}
-                                </select>
-                            )}
-                        </div>
-                    )}
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                        <button type="button" style={S.btn} onClick={translate} disabled={translating}>{translating ? t.translating : t.translate}</button>
-                        <button type="button" style={S.btn} onClick={() => setForm(null)}>{t.cancel}</button>
-                    </div>
-                </form>
-            )}
+                )}
+            </div>
+        </>
+    );
+}
 
-            {!data ? <div style={{ padding: '30px', textAlign: 'center', color: '#6e635b' }}>{t.loading}</div> : (
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'start' }}>
-                        <thead>
-                            <tr>
-                                <th style={{ ...S.th, textAlign: 'start' }}>{dict === 'assets' ? t.term_en : '#'}</th>
-                                <th style={{ ...S.th, textAlign: 'start' }}>{t.object_name}</th>
-                                <th style={{ ...S.th, textAlign: 'start' }}>{t.usage}</th>
-                                <th style={{ ...S.th, textAlign: 'start' }}>{t.actions}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {items.map(i => (
-                                <tr key={i.key}>
-                                    <td style={{ ...S.td, color: '#7d726a', whiteSpace: 'nowrap' }}>{dict === 'assets' ? <code>{i.key}</code> : i.key}</td>
-                                    <td style={S.td}>
-                                        <b style={{ color: '#2b2320' }}>{nameOf(i)}</b>
-                                        {!!Number(i.requires_ocr) && <span style={{ ...S.badge('#e8f1ff', '#2f4c8a'), marginInlineStart: '8px' }}>📷 {t['ocr_' + i.ocr_type] || i.ocr_type || ''}</span>}
-                                        <div style={{ ...S.hint, display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                            {LANGS.filter(l => l !== lang && i[col(dict, l)]).map(l => (
-                                                <span key={l}>{l.toUpperCase()}: <bdi dir={isRtl(l) ? 'rtl' : 'ltr'}>{i[col(dict, l)]}</bdi></span>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td style={{ ...S.td, color: '#7d726a' }}>{i.usage || '—'}</td>
-                                    <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
-                                        <div style={{ display: 'flex', gap: '6px' }}>
-                                            <button type="button" style={S.btn} onClick={() => openEdit(i)}>✏️</button>
-                                            <button type="button" style={S.danger} disabled={busy} onClick={() => remove(i)}>🗑</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {items.length === 0 && <tr><td colSpan={4} style={{ ...S.td, textAlign: 'center', color: '#7d726a' }}>{t.empty}</td></tr>}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-        </div>
+function FragmentLang({ l, v }) {
+    return (
+        <>
+            <span>{l.toUpperCase()}</span>
+            <div dir={isRtl(l) ? 'rtl' : 'ltr'} lang={l} style={{ textAlign: 'start', overflowWrap: 'anywhere' }}>{v}</div>
+        </>
     );
 }

@@ -63,6 +63,35 @@ function api_ok_then(array $data, callable $after): void
 }
 
 /** Ошибка с кодом (фронтенд переводит код в текст на языке интерфейса). */
+/**
+ * Действие из очереди телефона (client_op_id): уже выполненное не повторяем, а отвечаем тем же успехом.
+ * Возвращает id действия (или null), его потом передают в api_client_op_done().
+ */
+function api_client_op(array $me, $opId): ?string
+{
+    $opId = is_string($opId) ? trim($opId) : '';
+    if ($opId === '' || strlen($opId) > 80) return null;
+    $prev = db_value("SELECT response FROM client_ops WHERE op_id = ? AND user_id = ?", [$opId, $me['id']]);
+    if ($prev !== null) api_ok((json_decode((string)$prev, true) ?: []) + ['duplicate' => true]);
+    return $opId;
+}
+
+function api_client_op_done(?string $opId, array $me, array $response = []): void
+{
+    if ($opId === null) return;
+    db_exec("INSERT INTO client_ops (op_id, user_id, response) VALUES (?, ?, ?) ON CONFLICT (op_id) DO NOTHING",
+            [$opId, $me['id'], json_encode($response, JSON_UNESCAPED_UNICODE)]);
+}
+
+/** Когда действие сделано на телефоне (done_at, мс): не раньше трёх суток назад и не в будущем. */
+function api_done_time($doneAtMs): int
+{
+    $now = time();
+    if (!is_numeric($doneAtMs)) return $now;
+    $t = (int)floor(((float)$doneAtMs) / 1000);
+    return ($t > $now || $t < $now - 3 * 86400) ? $now : $t;
+}
+
 function api_fail(string $code, array $extra = [], int $http = 200): void
 {
     if ($http !== 200) http_response_code($http);

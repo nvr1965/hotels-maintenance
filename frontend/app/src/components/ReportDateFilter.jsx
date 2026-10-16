@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { uiText, localeOf } from '../i18n';
 import { getBrand } from '../brand';
+import './head/head.css';
 
 // Выбор даты для отчётов руководителя: «Сегодня» | «Вчера» | «Дата» (один день) | «Период» (с … по …).
 // value = { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }; onChange вызывается с новым value, когда даты выбраны полностью.
@@ -30,9 +31,9 @@ const modeOf = (v) => {
     return 'range';
 };
 
-const inputStyle = { display: 'block', padding: '8px', borderRadius: '8px', border: '1px solid #d9cec5', fontSize: '15px', background: '#fff', color: '#2b2320' };
-
-export default function ReportDateFilter({ lang = 'en', value, onChange, accent = '#844128', children }) {
+// Две строки: «Сегодня» «Вчера» (+ дополнительные кнопки, children) / «Дата» «Период».
+// accent оставлен для совместимости, оформление общее (бежевая активная кнопка).
+export default function ReportDateFilter({ lang = 'en', value, onChange, accent, children }) { // eslint-disable-line no-unused-vars
     const t = uiText('date_filter', lang);
     const [mode, setMode] = useState(() => modeOf(value));
     const [draft, setDraft] = useState(value); // черновик периода, пока не нажали «Показать»
@@ -47,12 +48,7 @@ export default function ReportDateFilter({ lang = 'en', value, onChange, accent 
     };
 
     const chip = (m, label) => (
-        <button key={m} type="button" onClick={() => pick(m)}
-            style={{
-                minHeight: '38px', padding: '7px 13px', borderRadius: '9px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
-                border: mode === m ? `2px solid ${accent}` : '1px solid #e2d8cf', background: mode === m ? accent : '#fff',
-                color: mode === m ? '#fff' : '#3f3530', WebkitTapHighlightColor: 'transparent'
-            }}>
+        <button key={m} type="button" className={'hd-chp' + (mode === m ? ' on' : '')} aria-pressed={mode === m} onClick={() => pick(m)}>
             {label}
         </button>
     );
@@ -61,8 +57,8 @@ export default function ReportDateFilter({ lang = 'en', value, onChange, accent 
     const caption = value.from === value.to ? fmtYmd(value.from, lang) : `${fmtYmd(value.from, lang)} — ${fmtYmd(value.to, lang)}`;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'start' }}>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="hd hd-filter">
+            <div className="hd-chips one">
                 {chip('today', t.today)}
                 {chip('yesterday', t.yesterday)}
                 {chip('day', t.day)}
@@ -71,29 +67,23 @@ export default function ReportDateFilter({ lang = 'en', value, onChange, accent 
             </div>
 
             {mode === 'day' && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <input type="date" value={value.from} max={today}
-                        onChange={e => e.target.value && onChange({ from: e.target.value, to: e.target.value })}
-                        style={inputStyle} />
-                </div>
+                <input type="date" className="hd-fld hd-one" value={value.from} max={today}
+                    onChange={e => e.target.value && onChange({ from: e.target.value, to: e.target.value })} />
             )}
 
-            {mode === 'range' && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <label style={{ fontSize: '14px', color: '#6e635b' }}>{t.from}
-                        <input type="date" value={draft.from} max={today} onChange={e => setDraft(d => ({ ...d, from: e.target.value }))} style={inputStyle} />
+            {mode === 'range' && (<>
+                <div className="hd-row2">
+                    <label>{t.from}
+                        <input type="date" className="hd-fld" value={draft.from} max={today} onChange={e => setDraft(d => ({ ...d, from: e.target.value }))} />
                     </label>
-                    <label style={{ fontSize: '14px', color: '#6e635b' }}>{t.to}
-                        <input type="date" value={draft.to} max={today} onChange={e => setDraft(d => ({ ...d, to: e.target.value }))} style={inputStyle} />
+                    <label>{t.to}
+                        <input type="date" className="hd-fld" value={draft.to} max={today} onChange={e => setDraft(d => ({ ...d, to: e.target.value }))} />
                     </label>
-                    <button type="button" disabled={!rangeOk} onClick={() => onChange({ ...draft })}
-                        style={{ minHeight: '38px', padding: '8px 16px', background: rangeOk ? accent : '#cbbfb5', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: rangeOk ? 'pointer' : 'default', fontSize: '15px' }}>
-                        {t.show}
-                    </button>
                 </div>
-            )}
+                <div><button type="button" className="hd-btn blue" disabled={!rangeOk} onClick={() => onChange({ ...draft })}>{t.show}</button></div>
+            </>)}
 
-            <div style={{ fontSize: '15px', color: '#6e635b' }}>📅 {t.for_}: <b style={{ color: '#2b2320' }}>{caption}</b></div>
+            <div className="hd-hint">{t.for_}: <b><bdi>{caption}</bdi></b></div>
         </div>
     );
 }

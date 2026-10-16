@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fmtNum } from './MeterChart';
+import { Ic, PlusBtn } from './admin/adminUi';
+import { meterText } from './admin/meterText';
+import { PhotoViewer } from './work/WorkTiles';
 
 // Правка показаний счётчиков задним числом (только для сисадмина):
 // исправить цифру или дату, удалить ошибочное показание, добавить пропущенное.
@@ -10,10 +13,11 @@ const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0
 const fmtDate = (s) => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : '—';
 const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 
-const field = { padding: '8px 10px', border: '1px solid #d9cec5', fontSize: '16px', background: '#fff', minWidth: 0, boxSizing: 'border-box' };
-const btn = { minHeight: '38px', padding: '6px 12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' };
 
-export default function MeterEdit() {
+export default function MeterEdit({ lang = 'en' }) {
+    const m_ = meterText(lang);
+    const [viewer, setViewer] = useState(null);
+    const [adding, setAdding] = useState(false);
     const [from, setFrom] = useState(daysAgo(30));
     const [to, setTo] = useState(iso(new Date()));
     const [meterFilter, setMeterFilter] = useState('all');
@@ -30,9 +34,9 @@ export default function MeterEdit() {
             if (d.success) {
                 setData(d);
                 setAdd(a => a.task_id ? a : { ...a, task_id: String(d.meters[0]?.id ?? '') });
-            } else setMessage({ ok: false, text: d.message || 'Нет доступа' });
+            } else setMessage({ ok: false, text: d.message || m_.no_access });
         } catch {
-            setMessage({ ok: false, text: 'Нет связи с сервером' });
+            setMessage({ ok: false, text: m_.no_net });
         }
     }, [from, to]);
     useEffect(() => { load(); }, [load]);
@@ -49,9 +53,9 @@ export default function MeterEdit() {
                 await load();
                 return true;
             }
-            setMessage({ ok: false, text: d.message || (d.errors || []).join('; ') || 'Не получилось' });
+            setMessage({ ok: false, text: d.message || (d.errors || []).join('; ') || m_.failed });
         } catch {
-            setMessage({ ok: false, text: 'Нет связи с сервером' });
+            setMessage({ ok: false, text: m_.no_net });
         } finally {
             setBusy(false);
         }
@@ -76,140 +80,126 @@ export default function MeterEdit() {
 
     const saveEdit = (r) => {
         const changes = [];
-        if (String(edit.value).trim() !== String(r.value)) changes.push(`показание ${r.value} → ${edit.value}`);
-        if (edit.date !== r.date) changes.push(`дата ${fmtDate(r.date)} → ${fmtDate(edit.date)}`);
-        if (edit.time !== r.time) changes.push(`время ${r.time} → ${edit.time}`);
+        if (String(edit.value).trim() !== String(r.value)) changes.push(m_.ch_value(r.value, edit.value));
+        if (edit.date !== r.date) changes.push(m_.ch_date(fmtDate(r.date), fmtDate(edit.date)));
+        if (edit.time !== r.time) changes.push(m_.ch_time(r.time, edit.time));
         if (!changes.length) { setEdit(null); return; }
-        post({ action: 'edit', id: r.id, value: edit.value, date: edit.date, time: edit.time }, `Исправлено: ${meterById[r.task_id]?.name}, ${changes.join(', ')}`);
+        post({ action: 'edit', id: r.id, value: edit.value, date: edit.date, time: edit.time }, m_.fixed(meterById[r.task_id]?.name, changes.join(', ')));
     };
     const remove = (r) => {
-        if (!window.confirm(`Удалить показание ${r.value} (${meterById[r.task_id]?.name}, ${fmtDate(r.date)} ${r.time})?`)) return;
-        post({ action: 'clear', id: r.id }, `Удалено: ${meterById[r.task_id]?.name}, ${fmtDate(r.date)}`);
+        if (!window.confirm(m_.del_q(r.value, meterById[r.task_id]?.name, `${fmtDate(r.date)} ${r.time}`))) return;
+        post({ action: 'clear', id: r.id }, m_.deleted(meterById[r.task_id]?.name, fmtDate(r.date)));
     };
     const addReading = async () => {
         const m = meterById[Number(add.task_id)];
         const same = withValue.find(r => r.task_id === Number(add.task_id) && r.date === add.date && r.time === add.time);
-        if (same && !window.confirm(`На ${fmtDate(add.date)} ${add.time} уже есть ${same.value}. Добавить ещё одно показание на то же время?`)) return;
+        if (same && !window.confirm(m_.same_q(`${fmtDate(add.date)} ${add.time}`, same.value))) return;
         const ok = await post({ action: 'save', rows: [{ task_id: Number(add.task_id), date: add.date, time: add.time, value: add.value, gemini: null }] },
-            `Добавлено: ${m?.name}, ${fmtDate(add.date)} ${add.time} = ${add.value}`);
+            m_.added(m?.name, `${fmtDate(add.date)} ${add.time}`, add.value));
         if (ok) setAdd(a => ({ ...a, value: '' }));
     };
 
+    const toggle = (r) => setEdit(e => (e?.id === r.id ? null : { id: r.id, value: String(r.value), date: r.date, time: r.time }));
+
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <div style={{ background: '#f8efe6', borderRadius: '12px', padding: '12px 14px', fontSize: '16px', color: '#3f3530' }}>
-                Здесь можно исправить показание, дату и время, удалить ошибочное и добавить пропущенное. За день может быть несколько показаний. Отчёт и Excel сразу считаются заново.
-                Каждая правка записывается в заметку («было … стало …»).
-            </div>
+        <div className="ad-list">
+            <div className="ad-info">{m_.ed_intro}</div>
 
             {/* Добавить пропущенное показание */}
-            <div style={{ border: '1px solid #ebe3dc', borderRadius: '14px', padding: '12px 14px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '17px', color: 'var(--brand-primary, #371f20)', marginBottom: '8px' }}>＋ Добавить показание</div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <select value={add.task_id} onChange={e => setAdd({ ...add, task_id: e.target.value })} style={{ ...field, flex: '2 1 200px' }}>
-                        {meters.map(m => <option key={m.id} value={m.id}>{m.name}{m.unit ? `, ${m.unit}` : ''}</option>)}
-                    </select>
-                    <input type="date" value={add.date} max={iso(new Date())} onChange={e => setAdd({ ...add, date: e.target.value })} style={{ ...field, flex: '1 1 150px' }} />
-                    <input type="time" value={add.time} onChange={e => setAdd({ ...add, time: e.target.value })} style={{ ...field, flex: '0 1 140px' }} />
-                    <input inputMode="decimal" placeholder="Показание" value={add.value} onChange={e => setAdd({ ...add, value: e.target.value })} style={{ ...field, flex: '1 1 130px', fontWeight: 'bold' }} />
-                    <button type="button" disabled={busy || !add.value.trim() || !add.task_id} onClick={addReading}
-                        style={{ ...btn, background: add.value.trim() ? 'var(--brand-button, #844128)' : '#d9cec5', color: '#fff', border: 'none' }}>Добавить</button>
-                </div>
+            <div className="ad-top">
+                <PlusBtn on={adding} onClick={() => setAdding(a => !a)}>{m_.add_reading}</PlusBtn>
             </div>
+            {adding && (
+                <form className="ad-card form" onSubmit={e => { e.preventDefault(); if (!busy && add.value.trim() && add.task_id) addReading(); }}>
+                    <div className="ad-lab">{m_.meter}
+                        <div className="ad-chips">
+                            {meters.map(m => (
+                                <button key={m.id} type="button" className={'ad-chp sm' + (String(add.task_id) === String(m.id) ? ' on' : '')}
+                                    onClick={() => setAdd({ ...add, task_id: String(m.id) })}>{m.name}{m.unit ? `, ${m.unit}` : ''}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="ad-row2">
+                        <label className="ad-lab">{m_.date}<input className="ad-fld" type="date" value={add.date} max={iso(new Date())} onChange={e => setAdd({ ...add, date: e.target.value })} /></label>
+                        <label className="ad-lab">{m_.time}<input className="ad-fld" type="time" value={add.time} onChange={e => setAdd({ ...add, time: e.target.value })} /></label>
+                    </div>
+                    <label className="ad-lab">{m_.value}
+                        <input className="ad-fld big" inputMode="decimal" dir="ltr" value={add.value} onChange={e => setAdd({ ...add, value: e.target.value })} />
+                    </label>
+                    <button type="submit" className="wk-done lg" disabled={busy || !add.value.trim() || !add.task_id}><Ic n="plus" />{m_.add}</button>
+                </form>
+            )}
 
             {/* Фильтр */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '15px', color: '#6e635b', flex: '1 1 150px' }}>
-                    С <input type="date" value={from} max={to} onChange={e => e.target.value && setFrom(e.target.value)} style={field} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '15px', color: '#6e635b', flex: '1 1 150px' }}>
-                    По <input type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)} style={field} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '15px', color: '#6e635b', flex: '2 1 200px' }}>
-                    Счётчик
-                    <select value={meterFilter} onChange={e => setMeterFilter(e.target.value)} style={field}>
-                        <option value="all">Все</option>
-                        {meters.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                </label>
+            <div className="ad-card">
+                <div className="ad-row2">
+                    <label className="ad-lab">{m_.from}<input className="ad-fld" type="date" value={from} max={to} onChange={e => e.target.value && setFrom(e.target.value)} /></label>
+                    <label className="ad-lab">{m_.to}<input className="ad-fld" type="date" value={to} min={from} onChange={e => e.target.value && setTo(e.target.value)} /></label>
+                </div>
+                <div className="ad-chips sx" role="group" aria-label={m_.meter}>
+                    <button type="button" className={'ad-chp sm' + (meterFilter === 'all' ? ' on' : '')} onClick={() => setMeterFilter('all')}>{m_.all}</button>
+                    {meters.map(m => (
+                        <button key={m.id} type="button" className={'ad-chp sm' + (meterFilter === String(m.id) ? ' on' : '')} onClick={() => setMeterFilter(String(m.id))}>{m.name}</button>
+                    ))}
+                </div>
             </div>
 
             {message && (
-                <div style={{ padding: '10px 14px', borderRadius: '10px', fontWeight: 'bold', background: message.ok ? '#e6f4ec' : '#fbe9e9', color: message.ok ? '#1d6b45' : '#b13434' }}>
-                    {message.text}
-                </div>
+                <div role="status" className={'ad-msg ' + (message.ok ? 'ok' : 'err')}><Ic n={message.ok ? 'check' : 'warn'} /><span>{message.text}</span></div>
             )}
-            {suspicious.size > 0 && (
-                <div style={{ color: '#b13434', fontSize: '15px' }}>Красным — показание меньше предыдущего (скорее всего, ошибка распознавания).</div>
-            )}
+            {suspicious.size > 0 && <div className="ad-hint red">{m_.red}</div>}
 
-            {!data ? <div style={{ color: '#6e635b' }}>Загрузка…</div> : rows.length === 0 ? (
-                <div style={{ color: '#6e635b', padding: '20px', textAlign: 'center' }}>За этот период показаний нет</div>
+            {!data ? <div className="ad-empty">{m_.loading}</div> : rows.length === 0 ? (
+                <div className="ad-empty">{m_.none_period}</div>
             ) : (
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '16px' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '2px solid #ebe3dc', color: '#6e635b', textAlign: 'start' }}>
-                                <th style={{ padding: '8px', textAlign: 'start' }}>Дата</th>
-                                <th style={{ padding: '8px', textAlign: 'start' }}>Время</th>
-                                <th style={{ padding: '8px', textAlign: 'start' }}>Счётчик</th>
-                                <th style={{ padding: '8px', textAlign: 'end' }}>Показание</th>
-                                <th style={{ padding: '8px' }}>Фото</th>
-                                <th style={{ padding: '8px' }}></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rows.map(r => {
-                                const m = meterById[r.task_id];
-                                const isEdit = edit?.id === r.id;
-                                const bad = suspicious.has(r.id);
-                                return (
-                                    <tr key={r.id} style={{ borderBottom: '1px solid #f3ebe2', background: isEdit ? '#fffaf3' : bad ? '#fdf0f0' : 'transparent', verticalAlign: 'middle' }}>
-                                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
-                                            {isEdit
-                                                ? <input type="date" value={edit.date} max={iso(new Date())} onChange={e => setEdit({ ...edit, date: e.target.value })} style={{ ...field, width: '160px' }} />
-                                                : fmtDate(r.date)}
-                                        </td>
-                                        <td style={{ padding: '8px', whiteSpace: 'nowrap', color: '#6e635b' }}>
-                                            {isEdit
-                                                ? <input type="time" value={edit.time} onChange={e => setEdit({ ...edit, time: e.target.value })} style={{ ...field, width: '120px' }} />
-                                                : r.time}
-                                        </td>
-                                        <td style={{ padding: '8px' }}>
-                                            {m?.name}
-                                            {r.notes && /правка/.test(r.notes) && <div style={{ fontSize: '13px', color: '#7d726a' }} title={r.notes}>✏️ правили</div>}
-                                        </td>
-                                        <td style={{ padding: '8px', textAlign: 'end', whiteSpace: 'nowrap' }}>
-                                            {isEdit
-                                                ? <input inputMode="decimal" value={edit.value} autoFocus onChange={e => setEdit({ ...edit, value: e.target.value })}
-                                                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(r); if (e.key === 'Escape') setEdit(null); }}
-                                                    style={{ ...field, width: '130px', fontWeight: 'bold', textAlign: 'end' }} />
-                                                : <b style={{ color: bad ? '#c43d3d' : '#2b2320' }}>{fmtNum(Number(String(r.value).replace(',', '.')), 3)}</b>}
-                                            {!isEdit && m?.unit && <span style={{ color: '#7d726a' }}> {m.unit}</span>}
-                                        </td>
-                                        <td style={{ padding: '8px', textAlign: 'center' }}>
-                                            {r.photo ? <a href={r.photo} target="_blank" rel="noreferrer" style={{ color: 'var(--brand-button, #844128)', fontWeight: 'bold' }}>📷</a> : <span style={{ color: '#cfc4ba' }}>—</span>}
-                                        </td>
-                                        <td style={{ padding: '8px', whiteSpace: 'nowrap', textAlign: 'end' }}>
-                                            {isEdit ? (
-                                                <span style={{ display: 'inline-flex', gap: '6px' }}>
-                                                    <button type="button" disabled={busy} onClick={() => saveEdit(r)} style={{ ...btn, background: '#26875a', color: '#fff', border: 'none' }}>Сохранить</button>
-                                                    <button type="button" onClick={() => setEdit(null)} style={{ ...btn, background: '#fff', color: '#3f3530', border: '1px solid #d9cec5' }}>Отмена</button>
-                                                </span>
-                                            ) : (
-                                                <span style={{ display: 'inline-flex', gap: '6px' }}>
-                                                    <button type="button" onClick={() => setEdit({ id: r.id, value: String(r.value), date: r.date, time: r.time })} style={{ ...btn, background: '#fff', color: 'var(--brand-button, #844128)', border: '1px solid var(--brand-accent, #cdaa7c)' }}>Изменить</button>
-                                                    <button type="button" disabled={busy} onClick={() => remove(r)} style={{ ...btn, background: '#fff', color: '#c43d3d', border: '1px solid #e7b9b9' }}>Удалить</button>
-                                                </span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                <div className="ad-grid">
+                    {rows.map(r => {
+                        const m = meterById[r.task_id];
+                        const isEdit = edit?.id === r.id;
+                        const bad = suspicious.has(r.id);
+                        const shown = fmtNum(Number(String(r.value).replace(',', '.')), 3);
+                        return (
+                            <div key={r.id} className={'wk-tile' + (bad ? ' u' : '') + (isEdit ? ' open' : '')}>
+                                <div className="wk-row" style={{ alignItems: 'center' }} role="button" tabIndex={0} aria-expanded={isEdit}
+                                    onClick={e => { if (!e.target.closest('.ad-ph')) toggle(r); }}
+                                    onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); toggle(r); } }}>
+                                    <div className="txt">
+                                        <div className="wk-place" style={{ fontVariantNumeric: 'tabular-nums', color: bad ? '#c43d3d' : undefined }}>
+                                            <bdi>{shown}{m?.unit ? ` ${m.unit}` : ''}</bdi>
+                                        </div>
+                                        <div className="wk-sub">
+                                            {m?.name} · <bdi>{fmtDate(r.date)} {r.time}</bdi>
+                                            {r.notes && /правка/.test(r.notes) && <span title={r.notes} style={{ color: 'var(--accent)' }}> · <Ic n="edit" /> {m_.edited}</span>}
+                                        </div>
+                                    </div>
+                                    {r.photo
+                                        ? <button type="button" className="ad-ph sm" aria-label={m_.photo}
+                                            onClick={() => setViewer({ items: [r.photo], caption: `${m?.name || ''} · ${fmtDate(r.date)} ${r.time} · ${shown}` })}><img src={r.photo} alt="" loading="lazy" onError={e => { e.currentTarget.style.visibility = 'hidden'; }} /></button>
+                                        : <span className="ad-hint" style={{ fontSize: '12px' }}>{m_.no_photo}</span>}
+                                </div>
+                                {isEdit && (
+                                    <div className="wk-more">
+                                        <label className="ad-lab">{m_.value}{m?.unit ? `, ${m.unit}` : ''}
+                                            <input className="ad-fld big" inputMode="decimal" dir="ltr" value={edit.value} autoFocus onChange={e => setEdit({ ...edit, value: e.target.value })}
+                                                onKeyDown={e => { if (e.key === 'Enter') saveEdit(r); if (e.key === 'Escape') setEdit(null); }} />
+                                        </label>
+                                        <div className="ad-row2">
+                                            <label className="ad-lab">{m_.date}<input className="ad-fld" type="date" value={edit.date} max={iso(new Date())} onChange={e => setEdit({ ...edit, date: e.target.value })} /></label>
+                                            <label className="ad-lab">{m_.time}<input className="ad-fld" type="time" value={edit.time} onChange={e => setEdit({ ...edit, time: e.target.value })} /></label>
+                                        </div>
+                                        <div className="ad-btnrow">
+                                            <button type="button" className="ad-btn green" disabled={busy} onClick={() => saveEdit(r)}><Ic n="save" />{m_.save}</button>
+                                            <button type="button" className="ad-btn" onClick={() => setEdit(null)}>{m_.cancel}</button>
+                                            <button type="button" className="ad-btn danger ad-push" disabled={busy} onClick={() => remove(r)}><Ic n="trash" />{m_.del}</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
+            {viewer && <PhotoViewer items={viewer.items} index={0} caption={viewer.caption} t={{ close: m_.close }} onClose={() => setViewer(null)} />}
         </div>
     );
 }

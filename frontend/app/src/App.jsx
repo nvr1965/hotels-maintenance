@@ -205,7 +205,7 @@ export default function App() {
         const dir = dirOf(loginLang);
 
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f7f1eb', direction: dir }}>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100svh', background: '#f3ebe2', direction: dir, padding: '16px', boxSizing: 'border-box', fontFamily: '"HeSans", "ArSans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' }}>
                 
                 {loginLangs.length > 1 && (
                     <div style={{ marginBottom: '20px' }}>
@@ -213,10 +213,10 @@ export default function App() {
                     </div>
                 )}
 
-                <form onSubmit={handleLogin} style={{ background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', width: '320px', textAlign: 'center' }}>
+                <form onSubmit={handleLogin} style={{ background: '#fff', padding: '32px 24px', borderRadius: '16px', boxShadow: '0 1px 3px rgba(55,31,32,.08), 0 8px 24px rgba(55,31,32,.06)', width: '100%', maxWidth: '360px', boxSizing: 'border-box', textAlign: 'center' }}>
                     
                     <BrandLogo size={52} color="var(--brand-primary, #371f20)" style={{ marginBottom: '14px' }} />
-                    <p style={{ color: '#6e635b', marginBottom: '20px', fontSize: '16px' }}>{text.title}</p>
+                    <p style={{ color: '#7d726a', marginBottom: '20px', fontSize: '16px' }}>{text.title}</p>
                     
                     {loginError && <div style={{ color: '#c43d3d', marginBottom: '15px', fontSize: '15px', fontWeight: 'bold' }}>{loginError}</div>}
                     
@@ -226,7 +226,7 @@ export default function App() {
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required 
-                        style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px' }} 
+                        style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px', minHeight: '48px', fontFamily: 'inherit', color: '#2f2624' }} 
                     />
                     
                     <input 
@@ -235,7 +235,7 @@ export default function App() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required 
-                        style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px' }} 
+                        style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px', minHeight: '48px', fontFamily: 'inherit', color: '#2f2624' }} 
                     />
                     
                     {isPersonalDevice ? <div style={{ marginBottom: '10px' }} /> : (
@@ -244,13 +244,13 @@ export default function App() {
                             type="checkbox" 
                             checked={rememberMe} 
                             onChange={(e) => setRememberMe(e.target.checked)} 
-                            style={{ width: '18px', height: '18px', accentColor: 'var(--brand-button, #844128)', cursor: 'pointer', margin: 0 }}
+                            style={{ width: '18px', height: '18px', accentColor: '#1f7a4f', cursor: 'pointer', margin: 0 }}
                         />
                         {text.remember}
                     </label>
                     )}
                     
-                    <button type="submit" style={{ width: '100%', padding: '12px', background: 'var(--brand-button, #844128)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer' }}>
+                    <button type="submit" style={{ width: '100%', minHeight: '54px', padding: '14px', background: '#1f7a4f', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: 800, fontSize: '18px', cursor: 'pointer', fontFamily: 'inherit' }}>
                         {text.btn}
                     </button>
                 </form>

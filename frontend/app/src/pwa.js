@@ -22,7 +22,7 @@ function updateOfflineBar() {
         Object.assign(bar.style, {
             position: 'fixed', left: '0', right: '0', top: '0', zIndex: '99999',
             padding: 'calc(env(safe-area-inset-top) + 8px) 12px 8px',
-            background: '#d93025', color: '#fff', fontSize: '14px', fontWeight: 'bold',
+            background: '#fef9c3', color: '#713f12', fontSize: '14px', fontWeight: 'bold',
             textAlign: 'center', fontFamily: 'inherit'
         });
         document.body.appendChild(bar);

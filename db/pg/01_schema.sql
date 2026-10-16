@@ -378,4 +378,15 @@ DELETE FROM member_departments WHERE user_id IN (SELECT id FROM users WHERE syst
 DELETE FROM hotel_members      WHERE user_id IN (SELECT id FROM users WHERE system_role IS NOT NULL);
 DELETE FROM org_members        WHERE user_id IN (SELECT id FROM users WHERE system_role IS NOT NULL);
 
+-- ---------------------------------------------------------------- действия из очереди телефона
+-- Без связи телефон копит действия (закрыть задачу, новая заявка) и шлёт их позже, иногда повторно.
+-- id действия запоминается, чтобы повторная отправка не задвоила запись.
+CREATE TABLE IF NOT EXISTS client_ops (
+    op_id      text PRIMARY KEY,
+    user_id    integer NOT NULL,
+    response   jsonb NOT NULL DEFAULT '{}',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+DELETE FROM client_ops WHERE created_at < now() - interval '60 days';
+
 COMMIT;

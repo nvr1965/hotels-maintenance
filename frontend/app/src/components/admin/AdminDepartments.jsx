@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, langName, isRtl } from './adminUi';
-import { uiText } from '../../i18n';
+import { tr, trNs, api, errText, S, Message, Ic, langName, isRtl } from './adminUi';
 
 // Админка → Службы отеля: обслуживание здания, уборка номеров, кухни…
 // Название на языках отеля (пустые сервер дописывает автопереводом), значок и цвет.
@@ -11,7 +10,7 @@ const ICONS = ['🛠️', '🧹', '🛏️', '🍳', '🥩', '🥛', '🍽️', 
 const COLORS = ['#1f3a5f', '#2f6f4f', '#8a5a12', '#7a2e2e', '#5b3f8c', '#1f6b7a', '#9c3d6b', '#4a4a4a'];
 
 export default function AdminDepartments({ lang }) {
-    const t = { ...tr(lang), ...uiText('deps', lang) };
+    const t = { ...tr(lang), ...trNs('deps', lang) };
     const [data, setData] = useState(null);
     const [form, setForm] = useState(null);     // { id|null, names: {}, icon, color, active }
     const [msg, setMsg] = useState(null);
@@ -69,33 +68,33 @@ export default function AdminDepartments({ lang }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <div style={S.hint}>{t.intro}</div>
+            <div className="ad-hint">{t.intro}</div>
             <div>
-                <button type="button" style={S.primary} onClick={openNew}>{t.add}</button>
+                <button type="button" className="ad-btn blue" onClick={openNew}>{t.add}</button>
             </div>
             <Message msg={msg} />
 
             {form && (
-                <form onSubmit={save} style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={S.hint}>{t.translate_hint}</div>
+                <form onSubmit={save} className="ad-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="ad-hint">{t.translate_hint}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
                         {LANGS.map(l => (
-                            <label key={l} style={S.label}>{langName(l)}
-                                <input style={S.field} dir={isRtl(l) ? 'rtl' : 'ltr'} lang={l} value={form.names[l] ?? ''} onChange={e => setName(l, e.target.value)} />
+                            <label key={l} className="ad-lab">{langName(l)}
+                                <input className="ad-fld" dir={isRtl(l) ? 'rtl' : 'ltr'} lang={l} value={form.names[l] ?? ''} onChange={e => setName(l, e.target.value)} />
                             </label>
                         ))}
                     </div>
-                    <div style={S.label}>{t.icon}
+                    <div className="ad-lab">{t.icon}
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {ICONS.map(i => (
                                 <button key={i} type="button" onClick={() => setForm(f => ({ ...f, icon: i }))} aria-pressed={form.icon === i}
-                                    style={{ ...S.btn, minWidth: '44px', fontSize: '20px', padding: '4px 8px', borderColor: form.icon === i ? 'var(--brand-button, #844128)' : '#d9cec5', borderWidth: form.icon === i ? '2px' : '1px' }}>{i}</button>
+                                    className="ad-btn" style={{ minWidth: '44px', fontSize: '20px', padding: '4px 8px', borderColor: form.icon === i ? 'var(--brand-button, #844128)' : '#d9cec5', borderWidth: form.icon === i ? '2px' : '1px' }}>{i}</button>
                             ))}
-                            <input style={{ ...S.field, width: '70px', fontSize: '20px', textAlign: 'center' }} value={form.icon} maxLength={8} aria-label={t.icon}
+                            <input className="ad-fld" style={{ width: '70px', fontSize: '20px', textAlign: 'center' }} value={form.icon} maxLength={8} aria-label={t.icon}
                                 onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} />
                         </div>
                     </div>
-                    <div style={S.label}>{t.color}
+                    <div className="ad-lab">{t.color}
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                             {COLORS.map(c => (
                                 <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))} aria-label={c} aria-pressed={form.color === c}
@@ -110,37 +109,37 @@ export default function AdminDepartments({ lang }) {
                         {t.active}
                     </label>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                        <button type="button" style={S.btn} onClick={translate} disabled={translating}>{translating ? t.translating : t.translate}</button>
-                        <button type="button" style={S.btn} onClick={() => setForm(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue" disabled={busy}>{t.save}</button>
+                        <button type="button" className="ad-btn" onClick={translate} disabled={translating}>{translating ? t.translating : t.translate}</button>
+                        <button type="button" className="ad-btn" onClick={() => setForm(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {data.items.map((d, n) => (
-                    <div key={d.id} style={{ ...S.card, background: '#fff', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', opacity: d.active ? 1 : 0.55 }}>
+                    <div key={d.id} className="ad-card" style={{ flexDirection: 'row', background: '#fff', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', opacity: d.active ? 1 : 0.55 }}>
                         <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: d.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', flex: '0 0 auto' }}>{d.icon}</div>
                         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                             <b style={{ color: '#2b2320', fontSize: '17px' }}>{nameOf(d)}</b>
                             {!d.active && <span style={{ ...S.badge('#f1ece7', '#6e635b'), marginInlineStart: '8px' }}>{t.inactive}</span>}
-                            <div style={{ ...S.hint, display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '2px' }}>
+                            <div className="ad-hint" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '2px' }}>
                                 {LANGS.filter(l => l !== lang && d.names[l]).map(l => (
                                     <span key={l}>{l.toUpperCase()}: <bdi dir={isRtl(l) ? 'rtl' : 'ltr'}>{d.names[l]}</bdi></span>
                                 ))}
                             </div>
-                            <div style={{ ...S.hint, marginTop: '4px' }}>{t.stats(d.usage.staff, d.usage.open_tasks, d.usage.routine)}</div>
+                            <div className="ad-hint" style={{ marginTop: '4px' }}>{t.stats(d.usage.staff, d.usage.open_tasks, d.usage.routine)}</div>
                         </div>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            <button type="button" style={S.btn} disabled={busy || n === 0} onClick={() => post('move', { id: d.id, dir: -1 })} aria-label={t.up}>↑</button>
-                            <button type="button" style={S.btn} disabled={busy || n === data.items.length - 1} onClick={() => post('move', { id: d.id, dir: 1 })} aria-label={t.down}>↓</button>
-                            <button type="button" style={S.btn} onClick={() => openEdit(d)}>✏️</button>
-                            <button type="button" style={S.danger} disabled={busy}
-                                onClick={() => window.confirm(`${nameOf(d)}: ${t.confirm_delete}`) && post('delete', { id: d.id }, t.deleted)}>🗑</button>
+                            <button type="button" className="ad-btn" disabled={busy || n === 0} onClick={() => post('move', { id: d.id, dir: -1 })} aria-label={t.up}>↑</button>
+                            <button type="button" className="ad-btn" disabled={busy || n === data.items.length - 1} onClick={() => post('move', { id: d.id, dir: 1 })} aria-label={t.down}>↓</button>
+                            <button type="button" className="ad-btn" onClick={() => openEdit(d)}><Ic n="edit" /></button>
+                            <button type="button" className="ad-btn danger" disabled={busy}
+                                onClick={() => window.confirm(`${nameOf(d)}: ${t.confirm_delete}`) && post('delete', { id: d.id }, t.deleted)}><Ic n="trash" /></button>
                         </div>
                     </div>
                 ))}
-                {data.items.length === 0 && <div style={{ ...S.hint, textAlign: 'center', padding: '20px' }}>{t.empty}</div>}
+                {data.items.length === 0 && <div className="ad-hint" style={{ textAlign: 'center', padding: '20px' }}>{t.empty}</div>}
             </div>
         </div>
     );

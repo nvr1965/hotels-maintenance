@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
+import { Ic } from './admin/adminUi';
+import { meterText } from './admin/meterText';
 
-// Ссылки для начальника: по ссылке сразу открывается отчёт по счётчикам на иврите, без входа.
+// Ссылки для начальника: по ссылке сразу открывается отчёт по счётчикам на основном языке отеля, без входа.
 // Ссылка даёт доступ только к этому отчёту и Excel. Отключённая ссылка перестаёт работать сразу.
 
-const fmtDT = (s) => s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) + ' ' + s.slice(11, 16) : 'ещё не открывали';
+const fmtDT = (s) => s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) + ' ' + s.slice(11, 16);
 
-export default function BossLinks() {
+export default function BossLinks({ lang = 'en' }) {
+    const m = meterText(lang);
     const [links, setLinks] = useState(null);
-    const [label, setLabel] = useState('Начальник');
+    const [label, setLabel] = useState(m.bl_default);
     const [copied, setCopied] = useState(null);
     const [error, setError] = useState('');
 
@@ -18,54 +21,46 @@ export default function BossLinks() {
                 ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
                 : undefined);
             const data = await res.json();
-            if (data.success) setLinks(data.links); else setError('Не получилось: ' + (data.message || 'ошибка'));
+            if (data.success) setLinks(data.links); else setError(m.bl_fail(data.message || m.err));
         } catch {
-            setError('Нет связи с сервером');
+            setError(m.no_net);
         }
     };
-    useEffect(() => { call(); }, []);
+    useEffect(() => { call(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const copy = async (l) => {
         try { await navigator.clipboard.writeText(l.url); }
-        catch { window.prompt('Скопируйте ссылку:', l.url); }
+        catch { window.prompt(m.bl_copy_prompt, l.url); }
         setCopied(l.id);
         setTimeout(() => setCopied(c => (c === l.id ? null : c)), 2000);
     };
     const revoke = (l) => {
-        if (window.confirm(`Отключить ссылку «${l.label || 'без названия'}»? По ней больше ничего не откроется.`)) call({ action: 'revoke', id: l.id });
+        if (window.confirm(m.bl_off_q(l.label || m.bl_noname))) call({ action: 'revoke', id: l.id });
     };
 
-    const btn = { minHeight: '40px', padding: '8px 14px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' };
-
     return (
-        <div style={{ border: '1px solid #ebe3dc', borderRadius: '14px', padding: '14px 16px', background: '#fffdfa' }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: '18px', color: 'var(--brand-primary, #371f20)' }}>🔗 Ссылка для начальника</h3>
-            <div style={{ fontSize: '15px', color: '#6e635b', marginBottom: '12px' }}>
-                По ссылке сразу открывается отчёт по счётчикам на иврите, без пароля и без меню. Больше ничего по ней не видно.
-                Если ссылка ушла не туда, отключите её и сделайте новую.
-            </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Для кого (например, Начальник)"
-                    style={{ flex: '1 1 220px', padding: '9px 10px', border: '1px solid #d9cec5', fontSize: '16px', minWidth: 0 }} />
-                <button type="button" onClick={() => call({ action: 'create', label })}
-                    style={{ ...btn, background: 'var(--brand-button, #844128)', color: '#fff', border: 'none' }}>Создать ссылку</button>
-            </div>
-            {error && <div style={{ color: '#c43d3d', marginBottom: '8px' }}>{error}</div>}
-            {links && links.length === 0 && <div style={{ color: '#7d726a' }}>Ссылок пока нет.</div>}
+        <div className="ad-card">
+            <h3><Ic n="link" />{m.bl_title}</h3>
+            <div className="ad-hint">{m.bl_text}</div>
+            <form className="ad-btnrow" onSubmit={e => { e.preventDefault(); call({ action: 'create', label }); }}>
+                <input className="ad-fld" style={{ flex: '1 1 200px', width: 'auto' }} value={label} onChange={e => setLabel(e.target.value)} placeholder={m.bl_for} aria-label={m.bl_for} />
+                <button type="submit" className="ad-btn blue"><Ic n="plus" />{m.bl_create}</button>
+            </form>
+            {error && <div className="ad-msg err"><Ic n="warn" /><span>{error}</span></div>}
+            {links && links.length === 0 && <div className="ad-hint">{m.bl_none}</div>}
             {links && links.map(l => (
-                <div key={l.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 0', borderTop: '1px solid #f3ebe2' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                        <b>{l.label || 'Без названия'}</b>
-                        <span style={{ fontSize: '14px', color: '#7d726a' }}>Последний раз открывали: {fmtDT(l.last_used_at)}</span>
+                <div key={l.id} className="ad-link">
+                    <div className="ad-link-top">
+                        <b>{l.label || m.bl_noname}</b>
+                        <span className="ad-hint">{m.bl_last} <bdi>{l.last_used_at ? fmtDT(l.last_used_at) : m.bl_never}</bdi></span>
                     </div>
-                    <input readOnly value={l.url} onFocus={e => e.target.select()} dir="ltr"
-                        style={{ padding: '8px 10px', border: '1px solid #d9cec5', fontSize: '14px', background: '#f8efe6', color: '#3f3530', minWidth: 0 }} />
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button type="button" onClick={() => copy(l)} style={{ ...btn, background: '#26875a', color: '#fff', border: 'none' }}>
-                            {copied === l.id ? '✓ Скопировано' : 'Скопировать'}
+                    <input className="ad-url" readOnly value={l.url} onFocus={e => e.target.select()} dir="ltr" aria-label={l.label || m.bl_noname} />
+                    <div className="ad-btnrow">
+                        <button type="button" className="ad-btn green" onClick={() => copy(l)}>
+                            <Ic n={copied === l.id ? 'check' : 'copy'} />{copied === l.id ? m.bl_copied : m.bl_copy}
                         </button>
-                        <a href={l.url} target="_blank" rel="noreferrer" style={{ ...btn, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9cec5', color: '#3f3530', textDecoration: 'none', background: '#fff' }}>Открыть</a>
-                        <button type="button" onClick={() => revoke(l)} style={{ ...btn, background: '#fff', color: '#c43d3d', border: '1px solid #e7b9b9' }}>Отключить</button>
+                        <a href={l.url} target="_blank" rel="noreferrer" className="ad-btn"><Ic n="ext" />{m.bl_open}</a>
+                        <button type="button" className="ad-btn danger" onClick={() => revoke(l)}>{m.bl_off}</button>
                     </div>
                 </div>
             ))}

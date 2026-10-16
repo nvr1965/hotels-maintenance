@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message } from './adminUi';
-import { uiText, loadUi } from '../../i18n';
+import { tr, trNs, api, errText, S, Message, Ic } from './adminUi';
 
 // Админка → Языки (только владелец системы): языки системы и тексты интерфейса на них.
 // Новый язык добавляется строкой: тексты интерфейса сервер переводит сам, сразу после сохранения.
@@ -10,7 +9,7 @@ const API = '/backend/api/admin_languages.php';
 const blank = { code: '', name: '', native_name: '', rtl: false, active: true, sort_order: 100, isNew: true };
 
 export default function AdminLanguages({ lang }) {
-    const t = { ...tr(lang), ...uiText('langs', lang) };
+    const t = { ...tr(lang), ...trNs('langs', lang) };
     const [data, setData] = useState(null);
     const [form, setForm] = useState(null);
     const [msg, setMsg] = useState(null);
@@ -57,27 +56,27 @@ export default function AdminLanguages({ lang }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <div style={S.hint}>{t.intro}</div>
+            <div className="ad-hint">{t.intro}</div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <button type="button" style={S.primary} onClick={() => { setForm({ ...blank }); setMsg(null); }}>{t.add}</button>
-                <span style={S.hint}>{t.provider}: <b>{data.provider}</b></span>
+                <button type="button" className="ad-btn blue" onClick={() => { setForm({ ...blank }); setMsg(null); }}>{t.add}</button>
+                <span className="ad-hint">{t.provider}: <b>{data.provider}</b></span>
             </div>
             <Message msg={msg} />
 
             {form && (
-                <form onSubmit={save} style={{ ...S.card, display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                    <label style={S.label}>{t.code}
-                        <input style={S.field} dir="ltr" required disabled={!form.isNew} value={form.code} placeholder="fr, de, uk, zh-CN"
+                <form onSubmit={save} className="ad-card" style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                    <label className="ad-lab">{t.code}
+                        <input className="ad-fld" dir="ltr" required disabled={!form.isNew} value={form.code} placeholder="fr, de, uk, zh-CN"
                             onChange={e => setForm(f => ({ ...f, code: e.target.value.trim() }))} />
                     </label>
-                    <label style={S.label}>{t.name_en}
-                        <input style={S.field} dir="ltr" required value={form.name} placeholder="French" onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                    <label className="ad-lab">{t.name_en}
+                        <input className="ad-fld" dir="ltr" required value={form.name} placeholder="French" onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
                     </label>
-                    <label style={S.label}>{t.native}
-                        <input style={S.field} dir="auto" value={form.native_name || ''} placeholder="Français" onChange={e => setForm(f => ({ ...f, native_name: e.target.value }))} />
+                    <label className="ad-lab">{t.native}
+                        <input className="ad-fld" dir="auto" value={form.native_name || ''} placeholder="Français" onChange={e => setForm(f => ({ ...f, native_name: e.target.value }))} />
                     </label>
-                    <label style={S.label}>{t.order}
-                        <input style={S.field} type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} />
+                    <label className="ad-lab">{t.order}
+                        <input className="ad-fld" type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} />
                     </label>
                     <label style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
                         <input type="checkbox" checked={!!form.rtl} onChange={e => setForm(f => ({ ...f, rtl: e.target.checked }))} /> {t.rtl}
@@ -86,8 +85,8 @@ export default function AdminLanguages({ lang }) {
                         <input type="checkbox" checked={!!form.active} disabled={form.code === 'en'} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} /> {t.active}
                     </label>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                        <button type="button" style={S.btn} onClick={() => setForm(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue" disabled={busy}>{t.save}</button>
+                        <button type="button" className="ad-btn" onClick={() => setForm(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
@@ -105,26 +104,26 @@ export default function AdminLanguages({ lang }) {
                             return (
                                 <tr key={l.code} style={{ opacity: l.active ? 1 : 0.55 }}>
                                     <td style={S.td}>
-                                        <b dir="auto">{l.native_name || l.name}</b> <span style={S.hint}>{l.name} · <code>{l.code}</code>{l.rtl ? ' · RTL' : ''}</span>
-                                        {!l.active && <div style={S.hint}>{t.inactive}</div>}
+                                        <b dir="auto">{l.native_name || l.name}</b> <span className="ad-hint">{l.name} · <code>{l.code}</code>{l.rtl ? ' · RTL' : ''}</span>
+                                        {!l.active && <div className="ad-hint">{t.inactive}</div>}
                                     </td>
                                     <td style={S.td}>
-                                        {l.code === 'en' ? <span style={S.hint}>{t.base}</span> : (
+                                        {l.code === 'en' ? <span className="ad-hint">{t.base}</span> : (
                                             <>
                                                 <span style={S.badge(done ? '#e7f6ec' : '#fff4e0', done ? '#1f6b3d' : '#8a5a12')}>{l.translated} / {data.total}</span>
-                                                {l.filling && <span style={{ ...S.hint, marginInlineStart: '8px' }}>{t.translating}</span>}
-                                                {l.auto > 0 && <div style={S.hint}>{t.auto_n(l.auto)}</div>}
+                                                {l.filling && <span className="ad-hint" style={{ marginInlineStart: '8px' }}>{t.translating}</span>}
+                                                {l.auto > 0 && <div className="ad-hint">{t.auto_n(l.auto)}</div>}
                                             </>
                                         )}
                                     </td>
                                     <td style={{ ...S.td, color: '#7d726a' }}>{l.hotels || '—'}</td>
                                     <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                            <button type="button" style={S.btn} onClick={() => { setForm({ ...l, isNew: false }); setMsg(null); }}>✏️</button>
-                                            {l.code !== 'en' && <button type="button" style={S.btn} onClick={() => setEdit(edit === l.code ? null : l.code)}>{t.texts}</button>}
-                                            {l.code !== 'en' && !done && <button type="button" style={S.btn} disabled={busy} onClick={() => post('fill', { code: l.code }, t.fill_started)}>{t.fill}</button>}
+                                            <button type="button" className="ad-btn" onClick={() => { setForm({ ...l, isNew: false }); setMsg(null); }}><Ic n="edit" /></button>
+                                            {l.code !== 'en' && <button type="button" className="ad-btn" onClick={() => setEdit(edit === l.code ? null : l.code)}>{t.texts}</button>}
+                                            {l.code !== 'en' && !done && <button type="button" className="ad-btn" disabled={busy} onClick={() => post('fill', { code: l.code }, t.fill_started)}>{t.fill}</button>}
                                             {l.code !== 'en' && l.auto > 0 && (
-                                                <button type="button" style={S.btn} disabled={busy}
+                                                <button type="button" className="ad-btn" disabled={busy}
                                                     onClick={() => window.confirm(t.redo_confirm) && post('fill', { code: l.code, redo: 1 }, t.fill_started)}>{t.redo}</button>
                                             )}
                                         </div>
@@ -174,15 +173,15 @@ function LanguageTexts({ t, code, name, rtl, onChanged }) {
         && (!ql || `${r.key} ${r.en} ${r.text || ''}`.toLowerCase().includes(ql))).slice(0, 300);
 
     return (
-        <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="ad-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <b>{t.texts_of(name)}</b>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <input style={{ ...S.field, flex: '1 1 220px', width: 'auto' }} placeholder={t.search} value={q} onChange={e => setQ(e.target.value)} />
+                <input className="ad-fld" style={{ flex: '1 1 220px', width: 'auto' }} placeholder={t.search} value={q} onChange={e => setQ(e.target.value)} />
                 <label style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                     <input type="checkbox" checked={onlyAuto} onChange={e => setOnlyAuto(e.target.checked)} /> {t.only_auto}
                 </label>
             </div>
-            <div style={S.hint}>{t.texts_hint}</div>
+            <div className="ad-hint">{t.texts_hint}</div>
             <Message msg={msg} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {shown.map(r => {
@@ -191,22 +190,22 @@ function LanguageTexts({ t, code, name, rtl, onChanged }) {
                     return (
                         <div key={r.key} style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', padding: '8px', background: '#fff', borderRadius: '10px', border: '1px solid #ebe3dc' }}>
                             <div style={{ minWidth: 0 }}>
-                                <div style={{ ...S.hint, fontSize: '12px' }}><code>{r.key}</code></div>
+                                <div className="ad-hint" style={{ fontSize: '12px' }}><code>{r.key}</code></div>
                                 <div dir="ltr" style={{ overflowWrap: 'anywhere' }}>{r.en}</div>
                             </div>
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', minWidth: 0 }}>
-                                <textarea style={{ ...S.field, minHeight: '42px', resize: 'vertical', fontFamily: 'inherit' }} dir={rtl ? 'rtl' : 'ltr'} lang={code}
+                                <textarea className="ad-fld" style={{ minHeight: '42px', resize: 'vertical', fontFamily: 'inherit' }} dir={rtl ? 'rtl' : 'ltr'} lang={code}
                                     value={value} placeholder={r.en} onChange={e => setDrafts(d => ({ ...d, [r.key]: e.target.value }))} />
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    {draft !== undefined && draft !== (r.text ?? '') && <button type="button" style={S.primary} onClick={() => saveText(r.key, draft)}>💾</button>}
-                                    {r.auto === false && <button type="button" style={S.btn} title={t.reset} onClick={() => saveText(r.key, '')}>↺</button>}
+                                    {draft !== undefined && draft !== (r.text ?? '') && <button type="button" className="ad-btn blue" onClick={() => saveText(r.key, draft)}><Ic n="save" /></button>}
+                                    {r.auto === false && <button type="button" className="ad-btn" title={t.reset} onClick={() => saveText(r.key, '')}>↺</button>}
                                 </div>
                             </div>
-                            <div style={{ ...S.hint, fontSize: '12px' }}>{r.auto === null ? t.st_missing : r.auto ? t.st_auto : t.st_manual}</div>
+                            <div className="ad-hint" style={{ fontSize: '12px' }}>{r.auto === null ? t.st_missing : r.auto ? t.st_auto : t.st_manual}</div>
                         </div>
                     );
                 })}
-                {shown.length === 0 && <div style={S.hint}>{t.empty}</div>}
+                {shown.length === 0 && <div className="ad-hint">{t.empty}</div>}
             </div>
         </div>
     );

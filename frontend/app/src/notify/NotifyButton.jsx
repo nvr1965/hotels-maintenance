@@ -13,6 +13,13 @@ const round = {
     justifyContent: 'center', fontSize: '17px', lineHeight: 1
 };
 
+const Bell = ({ off }) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>
+        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        {off && <path d="M3 3l18 18" />}
+    </svg>
+);
+
 export default function NotifyButton({ lang = 'en', role }) {
     // В подсказках — название приложения на телефоне (имя отеля)
     const appName = getBrand().hotel?.name || 'Hotel';
@@ -64,14 +71,14 @@ export default function NotifyButton({ lang = 'en', role }) {
         button = (
             <button type="button" onClick={() => setHint(state === 'denied' ? text.denied : text.install)}
                 title={state === 'denied' ? text.denied : text.install} style={{ ...round, opacity: 0.8 }}>
-                🔕
+                <Bell off />
             </button>
         );
     } else if (state === 'on' && role === 'head') {
         button = (
             <button type="button" onClick={toggleSound} title={silent ? text.sound_off : text.sound_on}
                 aria-label={silent ? text.sound_off : text.sound_on} style={round}>
-                {silent ? '🔕' : '🔔'}
+                <Bell off={silent} />
             </button>
         );
     }

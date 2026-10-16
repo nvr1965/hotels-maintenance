@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, langName, languageList } from './adminUi';
+import { tr, trNs, api, errText, S, Message, Ic, langName, languageList } from './adminUi';
 import { setBrand, getBrand } from '../../brand';
-import { uiText } from '../../i18n';
 import { StructureEditor, blankStructure } from './AdminTemplates';
 
 // Админка → Сеть (для администраторов сети и владельца системы): отели сети с настройками и брендингом,
@@ -56,7 +55,7 @@ const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, 
 
 export default function AdminNetwork({ lang, onOpenHotel }) {
     const base = tr(lang);
-    const t = { ...base, ...uiText('network', lang) };
+    const t = { ...base, ...trNs('network', lang) };
     const fail = (d) => ({ ok: false, text: errText(t, d) });
 
     const [orgs, setOrgs] = useState(null);
@@ -133,30 +132,30 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'start' }}>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 {orgs.length > 0 && (
-                    <label style={{ ...S.label, flex: '1 1 220px' }}>{t.org}
-                        <select style={S.field} value={orgId} onChange={e => { setOrgId(Number(e.target.value)); setForm(null); }}>
+                    <label className="ad-lab" style={{ flex: '1 1 220px' }}>{t.org}
+                        <select className="ad-fld" value={orgId} onChange={e => { setOrgId(Number(e.target.value)); setForm(null); }}>
                             {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                         </select>
                     </label>
                 )}
-                {org && <button type="button" style={S.btn} onClick={() => setOrgForm({ id: org.id, name: org.name, slug: org.slug })}>{t.edit}</button>}
-                {canCreateOrg && <button type="button" style={S.btn} onClick={() => setOrgForm({ id: 0, name: '', slug: '' })}>{t.new_org}</button>}
+                {org && <button type="button" className="ad-btn" onClick={() => setOrgForm({ id: org.id, name: org.name, slug: org.slug })}>{t.edit}</button>}
+                {canCreateOrg && <button type="button" className="ad-btn" onClick={() => setOrgForm({ id: 0, name: '', slug: '' })}>{t.new_org}</button>}
             </div>
 
             <Message msg={msg} />
 
             {orgForm && (
-                <form onSubmit={saveOrg} style={{ ...S.card, display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                    <label style={S.label}>{t.org_name}
-                        <input style={S.field} required value={orgForm.name}
+                <form onSubmit={saveOrg} className="ad-card" style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                    <label className="ad-lab">{t.org_name}
+                        <input className="ad-fld" required value={orgForm.name}
                             onChange={e => setOrgForm(f => ({ ...f, name: e.target.value, slug: f.id ? f.slug : slugify(e.target.value) }))} />
                     </label>
-                    <label style={S.label}>{t.slug}
-                        <input style={S.field} required value={orgForm.slug} onChange={e => setOrgForm(f => ({ ...f, slug: e.target.value }))} dir="ltr" />
+                    <label className="ad-lab">{t.slug}
+                        <input className="ad-fld" required value={orgForm.slug} onChange={e => setOrgForm(f => ({ ...f, slug: e.target.value }))} dir="ltr" />
                     </label>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                        <button type="button" style={S.btn} onClick={() => setOrgForm(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue" disabled={busy}>{t.save}</button>
+                        <button type="button" className="ad-btn" onClick={() => setOrgForm(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
@@ -165,15 +164,15 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
                 <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         <h3 style={{ margin: 0 }}>{t.hotels}</h3>
-                        <button type="button" style={S.primary} onClick={() => { setMsg(null); setForm(blankHotel(orgId)); }}>{t.new_hotel}</button>
+                        <button type="button" className="ad-btn blue" onClick={() => { setMsg(null); setForm(blankHotel(orgId)); }}>{t.new_hotel}</button>
                     </div>
 
                     {form && form.id === 0 && <HotelForm t={t} lang={lang} form={form} setForm={setForm} hotels={hotels || []} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />}
 
-                    {hotels === null ? <div style={S.hint}>{t.loading}</div> : (
+                    {hotels === null ? <div className="ad-hint">{t.loading}</div> : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {hotels.map(h => (
-                                <div key={h.id} style={S.card}>
+                                <div key={h.id} className="ad-card">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                                         <span style={{ width: '38px', height: '38px', borderRadius: '50%', flex: 'none', background: h.brand.color_primary, color: h.brand.color_accent,
                                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden' }}>
@@ -185,10 +184,10 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
                                                 {h.id === currentHotelId && <span style={{ marginInlineStart: '8px', ...S.badge('#e7f6ec', '#1f6b3d') }}>{t.current}</span>}
                                                 {!h.active && <span style={{ marginInlineStart: '8px', ...S.badge('#fdecea', '#a3301c') }}>{t.off}</span>}
                                             </div>
-                                            <div style={S.hint}>{h.slug} · {h.timezone} · {t.members_n(h.members)} · {t.assets_n(h.assets)}</div>
+                                            <div className="ad-hint">{h.slug} · {h.timezone} · {t.members_n(h.members)} · {t.assets_n(h.assets)}</div>
                                         </div>
-                                        {onOpenHotel && h.active && <button type="button" style={S.primary} onClick={() => onOpenHotel(h.id)}>{t.open_hotel}</button>}
-                                        <button type="button" style={S.btn} onClick={() => { setMsg(null); setForm(form?.id === h.id ? null : toForm(h)); }}>{form?.id === h.id ? t.close : t.edit}</button>
+                                        {onOpenHotel && h.active && <button type="button" className="ad-btn blue" onClick={() => onOpenHotel(h.id)}>{t.open_hotel}</button>}
+                                        <button type="button" className="ad-btn" onClick={() => { setMsg(null); setForm(form?.id === h.id ? null : toForm(h)); }}>{form?.id === h.id ? t.close : t.edit}</button>
                                     </div>
                                     {form && form.id === h.id && (
                                         <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -214,7 +213,7 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
     // Выбранный шаблон копируется в форму и правится тут же; сам шаблон не меняется
     const [templates, setTemplates] = useState(null);
     const [preview, setPreview] = useState(null);
-    const tt = { ...t, ...uiText('tpl', lang) };
+    const tt = { ...t, ...trNs('tpl', lang) };
     useEffect(() => {
         if (form.id !== 0) return;
         api('/backend/api/admin_templates.php?action=list').then(d => { if (d.success) setTemplates(d.items); });
@@ -239,50 +238,50 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
     const title = form.brand_title?.[form.default_lang] || form.name || '…';
 
     return (
-        <form onSubmit={onSubmit} style={{ ...S.card, background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <form onSubmit={onSubmit} className="ad-card" style={{ background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <b>{t.h_main}</b>
             <div style={grid}>
-                <label style={S.label}>{t.name}
-                    <input style={S.field} required value={form.name}
+                <label className="ad-lab">{t.name}
+                    <input className="ad-fld" required value={form.name}
                         onChange={e => { const v = e.target.value; setForm(f => ({ ...f, name: v, slug: f.id ? f.slug : slugify(v) })); }} />
                 </label>
-                <label style={S.label}>{t.slug}
-                    <input style={S.field} required dir="ltr" value={form.slug} onChange={e => set('slug', e.target.value)} />
+                <label className="ad-lab">{t.slug}
+                    <input className="ad-fld" required dir="ltr" value={form.slug} onChange={e => set('slug', e.target.value)} />
                 </label>
-                <label style={S.label}>{t.address}
-                    <input style={S.field} value={form.address} onChange={e => set('address', e.target.value)} />
+                <label className="ad-lab">{t.address}
+                    <input className="ad-fld" value={form.address} onChange={e => set('address', e.target.value)} />
                 </label>
-                <label style={S.label}>{t.timezone}
-                    <select style={S.field} value={form.timezone} onChange={e => set('timezone', e.target.value)}>
+                <label className="ad-lab">{t.timezone}
+                    <select className="ad-fld" value={form.timezone} onChange={e => set('timezone', e.target.value)}>
                         {(TIMEZONES.includes(form.timezone) ? TIMEZONES : [form.timezone, ...TIMEZONES]).map(z => <option key={z} value={z}>{z}</option>)}
                     </select>
                 </label>
             </div>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={S.label}>{t.languages}</span>
+                <span className="ad-lab">{t.languages}</span>
                 {ALL_LANGS().map(l => (
                     <label key={l} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                         <input type="checkbox" checked={form.languages.includes(l)} onChange={() => toggleLang(l)} /> {langName(l)}
                     </label>
                 ))}
-                <label style={{ ...S.label, flexDirection: 'row', alignItems: 'center', gap: '8px' }}>{t.default_lang}
-                    <select style={{ ...S.field, width: 'auto' }} value={form.default_lang} onChange={e => set('default_lang', e.target.value)}>
+                <label className="ad-lab" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>{t.default_lang}
+                    <select className="ad-fld" style={{ width: 'auto' }} value={form.default_lang} onChange={e => set('default_lang', e.target.value)}>
                         {form.languages.map(l => <option key={l} value={l}>{langName(l)}</option>)}
                     </select>
                 </label>
             </div>
             {form.id === 0 && templates && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <label style={S.label}>{t.template}
-                        <select style={S.field} value={form.template_id || 0} onChange={e => pickTemplate(Number(e.target.value))}>
+                    <label className="ad-lab">{t.template}
+                        <select className="ad-fld" value={form.template_id || 0} onChange={e => pickTemplate(Number(e.target.value))}>
                             <option value={0}>{t.template_none}</option>
                             {templates.map(x => <option key={x.id} value={x.id}>{x.name} — {t.template_sum(x.summary.buildings, x.summary.rooms)}</option>)}
                             <option value={-1}>{t.template_own}</option>
                         </select>
                     </label>
                     {form.structure && (
-                        <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div style={S.hint}>{t.template_edit_hint}</div>
+                        <div className="ad-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div className="ad-hint">{t.template_edit_hint}</div>
                             <StructureEditor t={tt} lang={lang} structure={form.structure}
                                 setStructure={(fn) => setForm(f => ({ ...f, structure: fn(f.structure) }))} onPreview={setPreview} />
                         </div>
@@ -290,8 +289,8 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
                 </div>
             )}
             {form.id === 0 && (
-                <label style={S.label}>{t.copy_from}
-                    <select style={S.field} value={form.copy_from_hotel_id} onChange={e => set('copy_from_hotel_id', Number(e.target.value))}>
+                <label className="ad-lab">{t.copy_from}
+                    <select className="ad-fld" value={form.copy_from_hotel_id} onChange={e => set('copy_from_hotel_id', Number(e.target.value))}>
                         <option value={0}>{t.copy_none}</option>
                         {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                     </select>
@@ -302,22 +301,22 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
             </label>
 
             <b>{t.h_brand}</b>
-            <div style={S.hint}>{t.title_hint}</div>
+            <div className="ad-hint">{t.title_hint}</div>
             <div style={grid}>
                 {form.languages.map(l => (
-                    <label key={l} style={S.label}>{t.title_in(langName(l))}
-                        <input style={S.field} dir="auto" value={form.brand_title?.[l] || ''} placeholder={form.name}
+                    <label key={l} className="ad-lab">{t.title_in(langName(l))}
+                        <input className="ad-fld" dir="auto" value={form.brand_title?.[l] || ''} placeholder={form.name}
                             onChange={e => { const v = e.target.value; setForm(f => ({ ...f, brand_title: { ...f.brand_title, [l]: v } })); }} />
                     </label>
                 ))}
-                <label style={S.label}>{t.subtitle}
-                    <input style={S.field} dir="auto" value={form.brand_subtitle} onChange={e => set('brand_subtitle', e.target.value)} />
+                <label className="ad-lab">{t.subtitle}
+                    <input className="ad-fld" dir="auto" value={form.brand_subtitle} onChange={e => set('brand_subtitle', e.target.value)} />
                 </label>
-                <label style={S.label}>{t.logo}
-                    <input style={S.field} dir="ltr" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} />
+                <label className="ad-lab">{t.logo}
+                    <input className="ad-fld" dir="ltr" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} />
                 </label>
             </div>
-            <div style={S.label}>{t.palettes}
+            <div className="ad-lab">{t.palettes}
                 <div style={{ display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', fontWeight: 400 }}>
                     {PALETTES.map(([key, primary, accent, text, button]) => {
                         const on = form.color_primary === primary && form.color_accent === accent && form.color_text === text && form.color_button === button;
@@ -336,13 +335,13 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
             </div>
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 {['color_primary', 'color_accent', 'color_text', 'color_button'].map(c => (
-                    <label key={c} style={{ ...S.label, alignItems: 'flex-start' }}>{t['c_' + c.slice(6)]}
+                    <label key={c} className="ad-lab" style={{ alignItems: 'flex-start' }}>{t['c_' + c.slice(6)]}
                         <input type="color" value={form[c]} onChange={e => set(c, e.target.value)} style={{ width: '64px', height: '40px', border: '1px solid #d9cec5', borderRadius: '8px', padding: '2px', background: '#fff' }} />
                     </label>
                 ))}
             </div>
             <div>
-                <div style={S.hint}>{t.preview}</div>
+                <div className="ad-hint">{t.preview}</div>
                 <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '12px', background: form.color_primary, color: form.color_text, flexWrap: 'wrap' }}>
                     <span style={{ width: '40px', height: '40px', borderRadius: '50%', background: form.color_accent, color: form.color_primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flex: 'none' }}>
                         {form.logo_url ? <img src={form.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (form.name || '?').slice(0, 1).toUpperCase()}
@@ -357,7 +356,7 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
 
             <b>{t.h_push}</b>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={S.hint}>{t.push_hint}:</span>
+                <span className="ad-hint">{t.push_hint}:</span>
                 {ROLES.map(r => (
                     <label key={r} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                         <input type="checkbox" checked={pushRoles.includes(r)} onChange={() => togglePush(r)} /> {t['role_' + r]}
@@ -366,8 +365,8 @@ function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel })
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="submit" style={S.primary} disabled={busy || structureBad}>{t.save}</button>
-                <button type="button" style={S.btn} onClick={onCancel}>{t.cancel}</button>
+                <button type="submit" className="ad-btn blue" disabled={busy || structureBad}>{t.save}</button>
+                <button type="button" className="ad-btn" onClick={onCancel}>{t.cancel}</button>
             </div>
         </form>
     );
@@ -410,21 +409,21 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
         if (!d.success) setMsg(fail(d)); else { setMsg({ ok: true, text: t.deleted }); load(); }
     };
 
-    if (people === null) return <div style={S.hint}>{t.loading}</div>;
+    if (people === null) return <div className="ad-hint">{t.loading}</div>;
     const inHotel = new Set(people.map(p => p.id));
     const candidates = others.filter(o => !inHotel.has(o.id));
 
     return (
-        <div style={{ ...S.card, background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="ad-card" style={{ background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <b>{t.h_people}</b>
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
                         {people.map(m => (
                             <tr key={m.id} style={{ opacity: m.active && m.user_active ? 1 : 0.5 }}>
-                                <td style={S.td}><b dir="auto">{m.display_name}</b><div style={S.hint} dir="ltr">{m.login}</div></td>
+                                <td style={S.td}><b dir="auto">{m.display_name}</b><div className="ad-hint" dir="ltr">{m.login}</div></td>
                                 <td style={S.td}>
-                                    <select style={{ ...S.field, width: 'auto' }} value={m.role} onChange={e => save({ user_id: m.id, role: e.target.value, is_admin: m.is_admin, active: m.active })}>
+                                    <select className="ad-fld" style={{ width: 'auto' }} value={m.role} onChange={e => save({ user_id: m.id, role: e.target.value, is_admin: m.is_admin, active: m.active })}>
                                         {ROLES.map(r => <option key={r} value={r}>{t['role_' + r]}</option>)}
                                     </select>
                                 </td>
@@ -433,7 +432,7 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
                                         <input type="checkbox" checked={!!m.is_admin} onChange={e => save({ user_id: m.id, role: m.role, is_admin: e.target.checked ? 1 : 0, active: m.active })} /> {t.is_admin}
                                     </label>
                                 </td>
-                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" style={S.danger} onClick={() => remove(m)}>{t.remove}</button></td>
+                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" className="ad-btn danger" onClick={() => remove(m)}>{t.remove}</button></td>
                             </tr>
                         ))}
                     </tbody>
@@ -441,7 +440,7 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
             </div>
 
             {!add ? (
-                <div><button type="button" style={S.btn} onClick={() => setAdd({ mode: candidates.length ? 'network' : 'new', user_id: 0, login: '', display_name: '', password: '', role: 'worker', is_admin: 0 })}>{t.add_person}</button></div>
+                <div><button type="button" className="ad-btn" onClick={() => setAdd({ mode: candidates.length ? 'network' : 'new', user_id: 0, login: '', display_name: '', password: '', role: 'worker', is_admin: 0 })}>{t.add_person}</button></div>
             ) : (
                 <form onSubmit={async e => {
                     e.preventDefault();
@@ -456,21 +455,21 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
                     </div>
                     <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                         {add.mode === 'network' ? (
-                            <label style={S.label}>{t.display_name}
-                                <select style={S.field} required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
+                            <label className="ad-lab">{t.display_name}
+                                <select className="ad-fld" required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
                                     <option value="">{t.pick}</option>
                                     {candidates.map(c => <option key={c.id} value={c.id}>{c.display_name} ({c.login})</option>)}
                                 </select>
                             </label>
                         ) : (
                             <>
-                                <label style={S.label}>{t.login}<input style={S.field} required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
-                                <label style={S.label}>{t.display_name}<input style={S.field} value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
-                                <label style={S.label}>{t.password}<input style={S.field} required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.login}<input className="ad-fld" required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.display_name}<input className="ad-fld" value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.password}<input className="ad-fld" required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
                             </>
                         )}
-                        <label style={S.label}>{t.role_label}
-                            <select style={S.field} value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
+                        <label className="ad-lab">{t.role_label}
+                            <select className="ad-fld" value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
                                 {ROLES.map(r => <option key={r} value={r}>{t['role_' + r]}</option>)}
                             </select>
                         </label>
@@ -479,8 +478,8 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
                         <input type="checkbox" checked={!!add.is_admin} onChange={e => setAdd(a => ({ ...a, is_admin: e.target.checked ? 1 : 0 }))} /> {t.is_admin}
                     </label>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="submit" style={S.primary}>{t.add}</button>
-                        <button type="button" style={S.btn} onClick={() => setAdd(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue">{t.add}</button>
+                        <button type="button" className="ad-btn" onClick={() => setAdd(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
@@ -516,28 +515,28 @@ function OrgPeople({ t, orgId, hotels, people, reload, post, setMsg, busy }) {
     };
 
     return (
-        <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="ad-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <h3 style={{ margin: 0 }}>{t.org_people}</h3>
-            <div style={S.hint}>{t.org_admin}: {t.org_admin_d} {t.org_viewer}: {t.org_viewer_d}</div>
+            <div className="ad-hint">{t.org_admin}: {t.org_admin_d} {t.org_viewer}: {t.org_viewer_d}</div>
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
                         {people.map(p => (
                             <tr key={p.id}>
-                                <td style={S.td}><b dir="auto">{p.display_name}</b><div style={S.hint} dir="ltr">{p.login}</div></td>
+                                <td style={S.td}><b dir="auto">{p.display_name}</b><div className="ad-hint" dir="ltr">{p.login}</div></td>
                                 <td style={S.td}>
-                                    <select style={{ ...S.field, width: 'auto' }} value={p.role} onChange={e => change({ user_id: p.id, role: e.target.value })}>
+                                    <select className="ad-fld" style={{ width: 'auto' }} value={p.role} onChange={e => change({ user_id: p.id, role: e.target.value })}>
                                         {ORG_ROLES.map(r => <option key={r} value={r}>{t[r]}</option>)}
                                     </select>
                                 </td>
-                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" style={S.danger} onClick={() => remove(p)}>{t.remove_org}</button></td>
+                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" className="ad-btn danger" onClick={() => remove(p)}>{t.remove_org}</button></td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
             {!add ? (
-                <div><button type="button" style={S.btn} onClick={() => setAdd({ mode: 'network', user_id: 0, login: '', display_name: '', password: '', role: 'org_viewer' })}>{t.add_person}</button></div>
+                <div><button type="button" className="ad-btn" onClick={() => setAdd({ mode: 'network', user_id: 0, login: '', display_name: '', password: '', role: 'org_viewer' })}>{t.add_person}</button></div>
             ) : (
                 <form onSubmit={async e => {
                     e.preventDefault();
@@ -551,28 +550,28 @@ function OrgPeople({ t, orgId, hotels, people, reload, post, setMsg, busy }) {
                     </div>
                     <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', alignItems: 'end' }}>
                         {add.mode === 'network' ? (
-                            <label style={S.label}>{t.display_name}
-                                <select style={S.field} required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
+                            <label className="ad-lab">{t.display_name}
+                                <select className="ad-fld" required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
                                     <option value="">{t.pick}</option>
                                     {candidates.map(c => <option key={c.id} value={c.id}>{c.display_name} ({c.login})</option>)}
                                 </select>
                             </label>
                         ) : (
                             <>
-                                <label style={S.label}>{t.login}<input style={S.field} required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
-                                <label style={S.label}>{t.display_name}<input style={S.field} value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
-                                <label style={S.label}>{t.password}<input style={S.field} required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.login}<input className="ad-fld" required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.display_name}<input className="ad-fld" value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.password}<input className="ad-fld" required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
                             </>
                         )}
-                        <label style={S.label}>{t.role_org}
-                            <select style={S.field} value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
+                        <label className="ad-lab">{t.role_org}
+                            <select className="ad-fld" value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
                                 {ORG_ROLES.map(r => <option key={r} value={r}>{t[r]}</option>)}
                             </select>
                         </label>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.add}</button>
-                        <button type="button" style={S.btn} onClick={() => setAdd(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue" disabled={busy}>{t.add}</button>
+                        <button type="button" className="ad-btn" onClick={() => setAdd(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
