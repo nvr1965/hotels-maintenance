@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, Pills } from './adminUi';
+import { tr, api, errText, Message, Pills, Ic, Search } from './adminUi';
 
 // Админка → База данных: любая таблица — просмотр, поиск, правка, добавление, удаление строк.
 // Плюс копия базы одним .sql и журнал всех правок из админки.
@@ -107,137 +107,165 @@ export default function AdminDb({ lang }) {
     const pages = data ? Math.max(1, Math.ceil(data.total / data.per)) : 1;
     const actName = (a) => t['act_' + a] || a;
 
+    const field = (c) => {
+        const set = (v) => setForm(f => ({ ...f, values: { ...f.values, [c.name]: v } }));
+        return isLong(c) ? (
+            <textarea className="ad-fld ad-mono" style={{ fontSize: '14px' }} disabled={form.nulls[c.name]} value={form.values[c.name]} onChange={e => set(e.target.value)} />
+        ) : (
+            <input className="ad-fld" disabled={form.nulls[c.name]}
+                type={inputType(c)} step={inputType(c) === 'datetime-local' ? 1 : undefined} inputMode={isNum(c) ? 'decimal' : undefined}
+                placeholder={c.secret ? t.db_secret_hint : (form.key === null && c.auto ? t.db_auto : (form.nulls[c.name] ? 'NULL' : ''))}
+                value={form.values[c.name]} onChange={e => set(e.target.value)} />
+        );
+    };
+
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <Pills value={view} onChange={setView} items={[['tables', `🗄️ ${t.db_tables}`], ['audit', t.db_audit]]} />
+        <>
+            <div className="ad-pad"><Pills value={view} onChange={setView} items={[['tables', t.db_tables], ['audit', t.db_audit]]} /></div>
 
             {view === 'audit' ? (
-                <>
-                    <div style={S.hint}>{t.db_audit_d}</div>
-                    {!audit ? <div style={{ padding: '30px', textAlign: 'center' }}>{t.loading}</div> : (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '15px' }}>
-                                <thead><tr>
-                                    {[t.audit_at, t.audit_who, t.audit_action, t.audit_table, t.audit_row, t.audit_change].map(h => <th key={h} style={{ ...S.th, textAlign: 'start' }}>{h}</th>)}
-                                </tr></thead>
-                                <tbody>
-                                    {audit.map(a => (
-                                        <tr key={a.id}>
-                                            <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{a.at}</td>
-                                            <td style={S.td}>{a.worker_name}</td>
-                                            <td style={S.td}>{actName(a.action)}</td>
-                                            <td style={S.td}><code>{a.tbl}</code></td>
-                                            <td style={S.td}><code>{a.row_key}</code></td>
-                                            <td style={{ ...S.td, fontSize: '13px', fontFamily: 'var(--mono)', maxWidth: '420px', overflowWrap: 'anywhere' }}><AuditDiff before={a.before_json} after={a.after_json} /></td>
-                                        </tr>
-                                    ))}
-                                    {audit.length === 0 && <tr><td colSpan={6} style={{ ...S.td, textAlign: 'center', color: '#7d726a' }}>{t.empty}</td></tr>}
-                                </tbody>
-                            </table>
+                <div className="ad-list">
+                    <div className="ad-hint">{t.db_audit_d}</div>
+                    <Message msg={msg} />
+                    {!audit ? <div className="ad-empty">{t.loading}</div> : audit.length === 0 ? <div className="ad-empty">{t.empty}</div> : (
+                        <div className="ad-grid wide">
+                            {audit.map(a => (
+                                <div key={a.id} className="ad-audit">
+                                    <div className="ad-audit-top">
+                                        <bdi>{a.at}</bdi>
+                                        <b>{a.worker_name}</b>
+                                        <span className="ad-st blue">{actName(a.action)}</span>
+                                        <span className="ad-mono">{a.tbl}{a.row_key ? ` · ${a.row_key}` : ''}</span>
+                                    </div>
+                                    <div className="ad-diff ad-mono"><AuditDiff before={a.before_json} after={a.after_json} /></div>
+                                </div>
+                            ))}
                         </div>
                     )}
-                </>
+                </div>
             ) : (
-                <>
-                    <div style={{ ...S.card, display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', background: '#fff8ec', borderColor: '#ecd9b8' }}>
-                        <div style={{ flex: '1 1 260px' }}>⚠️ {t.db_warn}<div style={S.hint}>{t.db_backup_d}</div></div>
-                        <a href={`${API}?action=backup`} style={{ ...S.primary, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>{t.db_backup}</a>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {(tables || []).map(tb => (
-                            <button key={tb.name} type="button" onClick={() => openTable(tb.name)}
-                                style={{ padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, border: '1px solid #d9cec5',
-                                    background: table === tb.name ? 'var(--brand-button, #844128)' : '#fff', color: table === tb.name ? '#fff' : '#3f3530' }}>
-                                {tb.name} <span style={{ opacity: 0.7, fontWeight: 'normal' }}>{tb.rows}</span>{!tb.editable && ' 🔒'}
-                            </button>
-                        ))}
-                        {!tables && <span>{t.loading}</span>}
+                <div className="ad-list">
+                    <div className="ad-warnbox"><Ic n="warn" /><span>{t.db_warn}</span></div>
+                    <div className="ad-card">
+                        <div className="ad-btnrow">
+                            <a href={`${API}?action=backup`} className="ad-btn green"><Ic n="download" />{t.db_backup}</a>
+                        </div>
+                        <div className="ad-hint">{t.db_backup_d}</div>
                     </div>
 
                     <Message msg={msg} />
 
-                    {table && data && (
+                    {!table ? (
                         <>
-                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                <b style={{ fontSize: '18px' }}>{table}</b>
-                                <span style={S.hint}>{t.total}: {data.total}{!data.editable && ` · 🔒 ${t.db_readonly}`}</span>
-                                {data.editable && <button type="button" style={S.primary} onClick={openNew}>{t.db_new_row}</button>}
-                                <form style={{ display: 'flex', gap: '6px', flex: '1 1 220px' }} onSubmit={e => { e.preventDefault(); setPage(1); setQApplied(q.trim()); }}>
-                                    <input style={{ ...S.field, flex: 1 }} placeholder={t.search} value={q} onChange={e => setQ(e.target.value)} />
-                                    <button type="submit" style={S.btn}>🔍</button>
-                                </form>
-                            </div>
-
-                            {form && (
-                                <form onSubmit={save} style={{ ...S.card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                                    {data.columns.map(c => (
-                                        <label key={c.name} style={{ ...S.label, gridColumn: isLong(c) ? '1 / -1' : undefined }}>
-                                            <span style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                <code style={{ color: '#2b2320' }}>{c.name}</code>
-                                                <span style={{ fontWeight: 'normal', fontSize: '13px', color: '#9a8f87' }}>{c.type}{data.key.includes(c.name) ? ' 🔑' : ''}</span>
-                                                {c.nullable && !c.secret && (
-                                                    <span style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', fontWeight: 'normal', fontSize: '13px', marginInlineStart: 'auto', cursor: 'pointer' }}
-                                                        onClick={e => { e.preventDefault(); setForm(f => ({ ...f, nulls: { ...f.nulls, [c.name]: !f.nulls[c.name] } })); }}>
-                                                        <input type="checkbox" readOnly checked={!!form.nulls[c.name]} /> {t.db_null}
-                                                    </span>
-                                                )}
-                                            </span>
-                                            {isLong(c) ? (
-                                                <textarea style={{ ...S.field, minHeight: '90px', fontFamily: 'var(--mono)', fontSize: '14px' }} disabled={form.nulls[c.name]}
-                                                    value={form.values[c.name]} onChange={e => setForm(f => ({ ...f, values: { ...f.values, [c.name]: e.target.value } }))} />
-                                            ) : (
-                                                <input style={{ ...S.field, opacity: form.nulls[c.name] ? 0.5 : 1 }} disabled={form.nulls[c.name]}
-                                                    type={inputType(c)} step={inputType(c) === 'datetime-local' ? 1 : undefined} inputMode={isNum(c) ? 'decimal' : undefined}
-                                                    placeholder={c.secret ? t.db_secret_hint : (form.key === null && c.auto ? t.db_auto : (form.nulls[c.name] ? 'NULL' : ''))}
-                                                    value={form.values[c.name]} onChange={e => setForm(f => ({ ...f, values: { ...f.values, [c.name]: e.target.value } }))} />
-                                            )}
-                                        </label>
+                            <div className="ad-sec">{t.db_tables}{tables ? ` · ${tables.length}` : ''}</div>
+                            {!tables ? <div className="ad-empty">{t.loading}</div> : (
+                                <div className="ad-grid">
+                                    {tables.map(tb => (
+                                        <div key={tb.name} className="wk-tile" role="button" tabIndex={0} onClick={() => openTable(tb.name)}
+                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTable(tb.name); } }}>
+                                            <div className="wk-row" style={{ alignItems: 'center' }}>
+                                                <div className="txt">
+                                                    <div className="wk-place ad-mono" style={{ fontSize: '17px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}><Ic n="db" /><span style={{ minWidth: 0 }}>{tb.name}</span></div>
+                                                    <div className="wk-sub"><b>{tb.rows}</b> {t.db_rows}</div>
+                                                </div>
+                                                {!tb.editable && <span className="ad-st grey"><Ic n="lock" />{t.db_readonly}</span>}
+                                                <Ic n="chev" className="ad-chev" />
+                                            </div>
+                                        </div>
                                     ))}
-                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', gridColumn: '1 / -1' }}>
-                                        <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                                        <button type="button" style={S.btn} onClick={() => setForm(null)}>{t.cancel}</button>
-                                        {form.key && <button type="button" style={{ ...S.danger, marginInlineStart: 'auto' }} disabled={busy} onClick={remove}>🗑 {t.delete}</button>}
-                                    </div>
-                                </form>
-                            )}
-
-                            <div style={{ overflowX: 'auto', border: '1px solid #ebe3dc', borderRadius: '10px' }}>
-                                <table style={{ borderCollapse: 'collapse', fontSize: '14px', minWidth: '100%' }}>
-                                    <thead><tr>
-                                        {data.columns.map(c => (
-                                            <th key={c.name} onClick={() => sortBy(c.name)} style={{ ...S.th, textAlign: 'start', cursor: 'pointer', background: '#fcf9f6', position: 'sticky', top: 0 }}>
-                                                {c.name}{data.sort === c.name ? (data.dir === 'asc' ? ' ▲' : ' ▼') : ''}
-                                            </th>
-                                        ))}
-                                    </tr></thead>
-                                    <tbody>
-                                        {data.rows.map((r, i) => (
-                                            <tr key={i} onClick={() => openRow(r)} style={{ cursor: data.editable ? 'pointer' : 'default' }}
-                                                onMouseEnter={e => { e.currentTarget.style.background = '#fbf4ec'; }} onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
-                                                {data.columns.map(c => {
-                                                    const v = short(r[c.name]);
-                                                    return <td key={c.name} style={{ ...S.td, maxWidth: '260px', overflowWrap: 'anywhere', color: v === null ? '#b3a79e' : '#2b2320' }}>{v === null ? 'NULL' : v}</td>;
-                                                })}
-                                            </tr>
-                                        ))}
-                                        {data.rows.length === 0 && <tr><td colSpan={data.columns.length} style={{ ...S.td, textAlign: 'center', color: '#7d726a' }}>{t.empty}</td></tr>}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {pages > 1 && (
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
-                                    <button type="button" style={S.btn} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t.prev}</button>
-                                    <span>{t.page} {page} {t.of} {pages}</span>
-                                    <button type="button" style={S.btn} disabled={page >= pages} onClick={() => setPage(p => p + 1)}>{t.next}</button>
                                 </div>
                             )}
                         </>
+                    ) : (
+                        <>
+                            <div className="ad-btnrow">
+                                <button type="button" className="ad-btn" onClick={() => { setTable(''); setData(null); setForm(null); }}><Ic n="back" flip />{t.db_tables}</button>
+                                <div className="ad-chips sx" style={{ flex: '1 1 200px' }}>
+                                    {(tables || []).map(tb => (
+                                        <button key={tb.name} type="button" className={'ad-chp sm ad-mono' + (table === tb.name ? ' on' : '')} onClick={() => openTable(tb.name)}>
+                                            {tb.name}{!tb.editable && <Ic n="lock" />}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {!data ? <div className="ad-empty">{t.loading}</div> : (
+                                <>
+                                    <div className="ad-card">
+                                        <h3><Ic n="db" /><span className="ad-mono" style={{ fontSize: '17px' }}>{table}</span>
+                                            {!data.editable && <span className="ad-st grey"><Ic n="lock" />{t.db_readonly}</span>}</h3>
+                                        <div className="ad-hint">{t.total}: <b>{data.total}</b></div>
+                                        <form className="ad-btnrow" onSubmit={e => { e.preventDefault(); setPage(1); setQApplied(q.trim()); }}>
+                                            <Search value={q} onChange={setQ} placeholder={t.search} />
+                                            <button type="submit" className="ad-btn"><Ic n="search" />{t.search.replace('…', '')}</button>
+                                            {data.editable && <button type="button" className="ad-btn blue" onClick={openNew}><Ic n="plus" />{t.db_new_row}</button>}
+                                        </form>
+                                    </div>
+
+                                    {form && (
+                                        <form onSubmit={save} className="ad-card form">
+                                            <h3>{form.key ? <><Ic n="edit" /><span className="ad-mono">{JSON.stringify(form.key)}</span></> : <><Ic n="plus" />{t.db_new_row}</>}</h3>
+                                            <div className="ad-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))' }}>
+                                                {data.columns.map(c => (
+                                                    <label key={c.name} className={'ad-lab' + (isLong(c) ? ' ad-span' : '')}>
+                                                        <span style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            <span className="ad-mono" style={{ color: 'var(--ink)' }}>{c.name}</span>
+                                                            <span style={{ fontWeight: 'normal', fontSize: '12px', color: '#9a8f87' }} className="ad-mono">{c.type}</span>
+                                                            {data.key.includes(c.name) && <Ic n="key" />}
+                                                            {c.nullable && !c.secret && (
+                                                                <button type="button" className="ad-tgl ad-push" style={{ fontSize: '12px', minHeight: 0, padding: 0 }} aria-pressed={!!form.nulls[c.name]}
+                                                                    onClick={e => { e.preventDefault(); setForm(f => ({ ...f, nulls: { ...f.nulls, [c.name]: !f.nulls[c.name] } })); }}>{t.db_null}</button>
+                                                            )}
+                                                        </span>
+                                                        {field(c)}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            <button type="submit" className="wk-done lg" disabled={busy}><Ic n="save" />{t.save}</button>
+                                            <div className="ad-btnrow" style={{ justifyContent: 'center' }}>
+                                                <button type="button" className="ad-btn" onClick={() => setForm(null)}>{t.cancel}</button>
+                                                {form.key && <button type="button" className="ad-btn danger" disabled={busy} onClick={remove}><Ic n="trash" />{t.delete}</button>}
+                                            </div>
+                                        </form>
+                                    )}
+
+                                    <div className="ad-tbl">
+                                        <table>
+                                            <thead><tr>
+                                                {data.columns.map(c => (
+                                                    <th key={c.name} className="sort" onClick={() => sortBy(c.name)} aria-sort={data.sort === c.name ? (data.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                                                        <span className="ad-mono">{c.name}</span>{data.sort === c.name && <Ic n="chev" className={data.dir === 'asc' ? 'up' : 'down'} />}
+                                                    </th>
+                                                ))}
+                                            </tr></thead>
+                                            <tbody>
+                                                {data.rows.map((r, i) => (
+                                                    <tr key={i} className={data.editable ? 'click' : ''} onClick={() => openRow(r)}>
+                                                        {data.columns.map(c => {
+                                                            const v = short(r[c.name]);
+                                                            return <td key={c.name} className={v === null ? 'null' : ''} style={{ maxWidth: '260px', overflowWrap: 'anywhere' }}><bdi>{v === null ? 'NULL' : v}</bdi></td>;
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                                {data.rows.length === 0 && <tr><td colSpan={data.columns.length} style={{ textAlign: 'center', color: '#7d726a' }}>{t.empty}</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {pages > 1 && (
+                                        <div className="ad-pager">
+                                            <button type="button" className="ad-btn" aria-label={t.back} disabled={page <= 1} onClick={() => setPage(p => p - 1)}><Ic n="chevL" flip /></button>
+                                            <span>{t.page} {page} {t.of} {pages}</span>
+                                            <button type="button" className="ad-btn" aria-label="next" disabled={page >= pages} onClick={() => setPage(p => p + 1)}><Ic n="chev" flip /></button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </>
                     )}
-                </>
+                </div>
             )}
-        </div>
+        </>
     );
 }
 

@@ -1,56 +1,32 @@
 <?php
+// Заявки, созданные этим менеджером: описание и место — на языке интерфейса (перевод на лету)
 require_once __DIR__ . '/../core/api.php';
 $me = app_require();
 $hid = $me['hotel_id'];
+$lang = api_lang($me);
 
-header('Content-Type: application/json; charset=utf-8');
+$rows = db_all("SELECT t.id, t.task_type, t.status, t.created_at, t.media, t.description, t.description_lang,
+                       d.names AS loc_names, a.asset_key
+                FROM maintenance_tasks t
+                LEFT JOIN hotel_assets a ON t.asset_id = a.id
+                LEFT JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND a.asset_key = d.term_key
+                WHERE t.hotel_id = ? AND t.user_id = ?
+                ORDER BY t.created_at DESC", [$hid, $me['id']]);
+$rows = i18n_rows_on_the_fly('maintenance_tasks', $rows, 'description', $lang);
 
-$lang = isset($_GET['lang']) ? $_GET['lang'] : 'ru';
-if (!in_array($lang, ['ru', 'en', 'he', 'ar'])) {
-    $lang = 'ru';
-}
-$langEsc = $db->real_escape_string($lang);
-
-$user_id = $me['id'];
-
-$sql = "SELECT t.id, t.task_type, t.status, t.created_at, t.media, 
-               COALESCE(t.description_$langEsc, t.description_ru, 'Без описания') as description,
-               COALESCE(d.term_$langEsc, d.term_ru, a.asset_key, 'Объект') as location
-        FROM maintenance_tasks t
-        LEFT JOIN hotel_assets a ON t.asset_id = a.id
-        LEFT JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND a.asset_key = d.term_en
-        WHERE t.hotel_id = $hid AND t.user_id = $user_id
-        ORDER BY t.created_at DESC";
-
-$res = $db->query($sql);
 $tasks = [];
-
-if ($res) {
-    while ($row = $res->fetch_assoc()) {
-        $rawMedia = $row['media'];
-        $decodedMedia = [];
-        if (!empty($rawMedia)) {
-            $decodedMedia = json_decode($rawMedia, true);
-            if (!is_array($decodedMedia)) {
-                $decodedMedia = [];
-            }
-        }
-
-        $tasks[] = [
-            'id' => $row['id'],
-            'task_type' => $row['task_type'] ?? 'current',
-            'status' => $row['status'] ?? 'pending',
-            'created_at' => $row['created_at'],
-            'updated_at' => $row['created_at'],
-            'description' => $row['description'],
-            'location' => $row['location'],
-            'media' => $decodedMedia
-        ];
-    }
-} else {
-    error_log("SQL Error in get_manager_tasks.php: " . $db->error);
+foreach ($rows as $row) {
+    $media = json_decode((string)$row['media'], true);
+    $tasks[] = [
+        'id' => (int)$row['id'],
+        'task_type' => $row['task_type'] ?? 'current',
+        'status' => $row['status'] ?? 'pending',
+        'created_at' => $row['created_at'],
+        'updated_at' => $row['created_at'],
+        'description' => $row['description'] !== '' ? $row['description'] : ui_t('no_description', $lang),
+        'description_orig' => $row['description_orig'],
+        'location' => ($row['loc_names'] !== null ? i18n_pick($row['loc_names'], $lang) : '') ?: ($row['asset_key'] ?? ui_t('object', $lang)),
+        'media' => is_array($media) ? $media : [],
+    ];
 }
-
-echo json_encode(['success' => true, 'tasks' => $tasks]);
-exit;
-?>
+api_ok(['tasks' => $tasks]);

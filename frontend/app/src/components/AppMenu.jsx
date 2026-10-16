@@ -4,20 +4,10 @@
 import { useEffect, useState } from 'react';
 import { LogoutConfirm, logoutText } from './LogoutButton';
 import { useBrand, switchHotel } from '../brand';
+import { uiText, dirOf, languageList, langName } from '../i18n';
+import { LangFlag } from './LangPicker';
 
-const ui = {
-    ru: { menu: 'Меню', lang: 'Язык', hotel: 'Отель' },
-    en: { menu: 'Menu', lang: 'Language', hotel: 'Hotel' },
-    he: { menu: 'תפריט', lang: 'שפה', hotel: 'מלון' },
-    ar: { menu: 'القائمة', lang: 'اللغة', hotel: 'الفندق' }
-};
 
-const LANG_NAMES = [
-    { code: 'ru', name: 'Русский' },
-    { code: 'en', name: 'English' },
-    { code: 'he', name: 'עברית' },
-    { code: 'ar', name: 'العربية' }
-];
 
 const itemStyle = (active) => ({
     display: 'flex', alignItems: 'center', gap: '10px', width: '100%', minHeight: '44px', padding: '8px 14px',
@@ -25,16 +15,18 @@ const itemStyle = (active) => ({
     fontSize: '16px', fontWeight: active ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'start'
 });
 
-export default function AppMenu({ lang = 'ru', onChangeLang, onLogout }) {
-    const text = ui[lang] || ui.ru;
-    const dir = lang === 'he' || lang === 'ar' ? 'rtl' : 'ltr';
+export default function AppMenu({ lang = 'en', onChangeLang, onLogout }) {
+    const text = uiText('menu', lang);
+    const dir = dirOf(lang);
     const [open, setOpen] = useState(false);
     const [asking, setAsking] = useState(false);
     const brand = useBrand();
     const hotels = brand.hotels || [];
     const currentId = brand.hotel?.id;
-    const allowed = brand.hotel?.languages?.length ? brand.hotel.languages : LANG_NAMES.map(l => l.code);
-    const langs = LANG_NAMES.filter(l => allowed.includes(l.code) || l.code === lang);
+    // Языки отеля (с названиями на самих языках); текущий язык показываем, даже если его нет в отеле
+    const info = brand.hotel?.language_info?.length ? brand.hotel.language_info : languageList();
+    const langs = info.map(l => ({ code: l.code, name: l.name })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+    if (!langs.some(l => l.code === lang)) langs.push({ code: lang, name: langName(lang) });
 
     useEffect(() => {
         if (!open) return;
@@ -87,6 +79,7 @@ export default function AppMenu({ lang = 'ru', onChangeLang, onLogout }) {
                         {langs.map(l => (
                             <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === lang} onClick={() => pickLang(l.code)} style={itemStyle(l.code === lang)}>
                                 <span style={{ width: '18px', color: 'var(--brand-button, #844128)' }}>{l.code === lang ? '✓' : ''}</span>
+                                <LangFlag code={l.code} size={20} />
                                 <span dir="auto">{l.name}</span>
                             </button>
                         ))}

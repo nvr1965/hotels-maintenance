@@ -17,8 +17,12 @@ function readCache() {
     }
 }
 
+// Без отеля (общий вход в систему) — нейтральные цвета и название системы
+const SYSTEM_BRAND = { color_primary: '#1f3a5f', color_accent: '#c9a96e', color_text: '#ffffff', color_button: '#1f3a5f' };
+export const SYSTEM_NAME = 'Hotels Maintenance';
+
 function applyCss(hotel) {
-    const b = hotel?.brand;
+    const b = hotel ? hotel.brand : SYSTEM_BRAND;
     if (!b) return;
     const root = document.documentElement.style;
     root.setProperty('--brand-primary', b.color_primary);
@@ -27,10 +31,10 @@ function applyCss(hotel) {
     root.setProperty('--brand-button', b.color_button || b.color_primary);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', b.color_primary);
-    document.title = hotel.name;
+    document.title = hotel?.name || SYSTEM_NAME;
     // Установка на телефон: имя и цвета приложения — этого отеля
     const manifest = document.querySelector('link[rel="manifest"]');
-    if (manifest && hotel.slug) manifest.setAttribute('href', `/backend/api/manifest.php?hotel=${encodeURIComponent(hotel.slug)}`);
+    if (manifest && hotel?.slug) manifest.setAttribute('href', `/backend/api/manifest.php?hotel=${encodeURIComponent(hotel.slug)}`);
 }
 
 applyCss(state.hotel);
@@ -68,9 +72,14 @@ export function hotelTitle(hotel, lang) {
     return hotel?.brand?.title?.[lang] || hotel?.name || '';
 }
 
-// Брендинг до входа: ?hotel=<slug> в адресе, иначе последний отель на этом устройстве, иначе первый на сервере
+// Брендинг до входа: ?hotel=<slug> в адресе (ссылка или приложение отеля на телефоне);
+// без него — общий вход в систему, без отеля
 export async function loadPublicBrand() {
-    const slug = new URLSearchParams(window.location.search).get('hotel') || state.hotel?.slug || '';
+    const slug = new URLSearchParams(window.location.search).get('hotel') || '';
+    if (!slug) {
+        setBrand({ hotel: null, hotels: state.hotels, orgs: state.orgs });
+        return null;
+    }
     try {
         const res = await fetch(`/backend/api/branding.php${slug ? `?hotel=${encodeURIComponent(slug)}` : ''}`, { cache: 'no-store' });
         const data = await res.json();

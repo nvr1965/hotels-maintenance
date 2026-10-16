@@ -1,4 +1,5 @@
 // Уведомления о срочных заявках: подписка телефона на Web Push и цифра на иконке приложения.
+import { isRtl } from '../i18n';
 // Сервер: backend/api/push_subscribe.php, рассылка — backend/core/push.php, показ — public/sw.js.
 
 const API = '/backend/api/push_subscribe.php';
@@ -126,7 +127,7 @@ const URGENT_TITLE = { ru: '🚨 Срочная заявка', en: '🚨 Urgent 
 // openTasks: [{id, text}] — открытые срочные заявки.
 // iPhone: цифру ставит setAppBadge. Android: цифра или точка на иконке = число висящих
 // уведомлений, поэтому недостающие (смахнули, пришли до подписки) показываем заново, без звука.
-export async function syncUrgentBadge(openTasks, lang = 'ru') {
+export async function syncUrgentBadge(openTasks, lang = 'en') {
     setBadge(openTasks.length);
     if (!('serviceWorker' in navigator)) return;
     try {
@@ -140,7 +141,7 @@ export async function syncUrgentBadge(openTasks, lang = 'ru') {
             if (open.has(m[1])) shown.add(m[1]); else n.close();
         });
         if (isIos() || Notification.permission !== 'granted' || !(await reg.pushManager?.getSubscription())) return;
-        const rtl = lang === 'he' || lang === 'ar';
+        const rtl = isRtl(lang);
         for (const [id, t] of open) {
             if (shown.has(id)) continue;
             await reg.showNotification(URGENT_TITLE[lang] || URGENT_TITLE.ru, {
