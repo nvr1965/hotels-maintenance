@@ -1,5 +1,7 @@
 backend/core/config.local.php
 backend/core/secrets.php
+backend/core/translator_keys.php
+backend/core/translator_keys.php.*.tmp
 backend/core/push_keys.php
 backend/core/.openrouter_free_vision_models.json
 backend/sessions/*

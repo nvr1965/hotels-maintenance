@@ -23,10 +23,10 @@ function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 // ---------------------------------------------------------------- сервер
 $checks = [];
 $checks[] = ['PHP ' . PHP_VERSION, true, ''];
-$checks[] = ['Расширение curl', extension_loaded('curl'), ['', 'В C:\\xampp\\php\\php.ini убрать «;» перед extension=curl и перезапустить Apache']];
-$checks[] = ['Расширение openssl', extension_loaded('openssl'), ['', 'В php.ini убрать «;» перед extension=openssl и перезапустить Apache']];
+$checks[] = ['Расширение curl', extension_loaded('curl'), ['', 'Установить php-curl (sudo apt install php8.3-curl) и перезапустить php-fpm']];
+$checks[] = ['Расширение openssl', extension_loaded('openssl'), ['', 'Включить openssl в PHP и перезапустить php-fpm']];
 $keys = extension_loaded('openssl') ? push_vapid_keys() : null;
-$checks[] = ['Ключи уведомлений (push_keys.php)', (bool)$keys, ['', 'Сервер не смог создать ключи, подробности в C:\\xampp\\apache\\logs\\error.log (строки push:)']];
+$checks[] = ['Ключи уведомлений (push_keys.php)', (bool)$keys, ['', 'Сервер не смог создать ключи, подробности в журнале php-fpm (строки push:)']];
 $ca = ini_get('curl.cainfo') ?: ini_get('openssl.cafile') ?: push_ca_file();
 $checks[] = ['Сертификаты для https', DIRECTORY_SEPARATOR !== '\\' || $ca !== '', $ca !== '' ? $ca : (DIRECTORY_SEPARATOR === '\\' ? 'Не найден файл сертификатов: в php.ini задать curl.cainfo' : 'системные')];
 
@@ -50,15 +50,14 @@ $PUSH_ROLES = push_roles($hotel);
 // Подписки людей этого отеля (подписка — на человека, а не на отель)
 $subsSql = "SELECT s.*, u.display_name AS name, m.role, (u.active AND m.active) AS active, s.user_id AS worker_id
             FROM push_subscriptions s
-            JOIN hotel_members m ON m.user_id = s.user_id AND m.hotel_id = $hid
+            JOIN hotel_members m ON m.user_id = s.user_id AND m.hotel_id = ?
             JOIN users u ON u.id = s.user_id
             ORDER BY u.display_name, s.id";
-$subs = $db->query($subsSql)->fetch_all(MYSQLI_ASSOC);
-$roles = "'" . implode("','", $PUSH_ROLES) . "'";
-$noSub = $db->query("SELECT u.display_name AS name, m.role FROM hotel_members m JOIN users u ON u.id = m.user_id AND u.active = 1
-                     WHERE m.hotel_id = $hid AND m.active = 1 AND m.role IN ($roles)
-                       AND NOT EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.user_id = u.id)
-                     ORDER BY u.display_name")->fetch_all(MYSQLI_ASSOC);
+$subs = db_all($subsSql, [$hid]);
+$noSub = db_all("SELECT u.display_name AS name, m.role FROM hotel_members m JOIN users u ON u.id = m.user_id AND u.active
+                 WHERE m.hotel_id = ? AND m.active AND m.role = ANY(?::text[])
+                   AND NOT EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.user_id = u.id)
+                 ORDER BY u.display_name", [$hid, pg_array_literal($PUSH_ROLES)]);
 
 function device_name(string $ua, string $endpoint): string
 {
@@ -81,24 +80,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test'
     $messages = [];
     foreach ($subs as $s) {
         if ($only && (int)$s['id'] !== $only) continue;
-        $l = in_array($s['lang'], ['ru', 'en', 'he', 'ar'], true) ? $s['lang'] : 'ru';
-        $body = ['ru' => 'Проверка: уведомления работают', 'en' => 'Test: notifications work',
-                 'he' => 'בדיקה: ההתראות עובדות', 'ar' => 'اختبار: الإشعارات تعمل'][$l];
-        $messages[] = [$s, ['type' => 'urgent', 'id' => 0, 'title' => '🔔 ' . $hotel['name'], 'body' => $body,
+        $l = app_normalize_lang($s['lang']);
+        $messages[] = [$s, ['type' => 'urgent', 'id' => 0, 'title' => '🔔 ' . $hotel['name'], 'body' => ui_t('push_test_body', $l),
                             'count' => $count, 'silent' => false, 'lang' => $l]];
     }
     $results = push_send_all($messages, 'test');
 }
 $sentTo = $subs;
 // Подписки с ответом 404/410 push_send_all удалил, список ниже уже без них
-if ($results !== null) $subs = $db->query($subsSql)->fetch_all(MYSQLI_ASSOC);
+if ($results !== null) $subs = db_all($subsSql, [$hid]);
 
 function explain(int $code, string $err): string
 {
     if ($code >= 200 && $code < 300) return 'Доставлено в Google/Apple. Если на телефоне не появилось, смотрите настройки уведомлений телефона.';
     if ($code === 404 || $code === 410) return 'Телефон больше не подписан (приложение удалено или запрещены уведомления). Подписка удалена, на телефоне нужно снова нажать «Включить уведомления».';
     if ($code === 403 || $code === 401) return 'Ключи сервера не совпадают с подпиской (push_keys.php меняли или удаляли). На этом телефоне выйти из приложения, войти и снова включить уведомления.';
-    if ($code === 0 && preg_match('/certificate|SSL|issuer/i', $err)) return 'Сервер не может проверить сертификат Google/Apple: в php.ini не задан curl.cainfo.';
+    if ($code === 0 && preg_match('/certificate|SSL|issuer/i', $err)) return 'Сервер не может проверить сертификат Google/Apple: на сервере не установлены корневые сертификаты (пакет ca-certificates).';
     if ($code === 0) return 'Сервер не достучался до Google/Apple: нет выхода в интернет, брандмауэр или прокси.';
     return 'Ошибка сервиса уведомлений.';
 }
@@ -141,10 +138,10 @@ button{font-size:15px;padding:9px 16px;border-radius:8px;border:none;background:
 
 <h2>Последние рассылки по настоящим заявкам</h2>
 <?php
-$log = $db->query("SELECT l.*, t.user_id, w.display_name AS author FROM push_log l
-                   LEFT JOIN maintenance_tasks t ON t.id = l.task_id LEFT JOIN users w ON w.id = t.user_id
-                   WHERE l.hotel_id = $hid
-                   ORDER BY l.id DESC LIMIT 20")->fetch_all(MYSQLI_ASSOC);
+$log = db_all("SELECT l.*, t.user_id, w.display_name AS author FROM push_log l
+               LEFT JOIN maintenance_tasks t ON t.id = l.task_id LEFT JOIN users w ON w.id = t.user_id
+               WHERE l.hotel_id = ?
+               ORDER BY l.id DESC LIMIT 20", [$hid]);
 ?>
 <?php if (!$log): ?>
 <p class="muted">Записей пока нет. Они появятся после следующей срочной заявки. Если заявку создали, а записи нет, значит рассылка даже не началась: пришлите снимок этой страницы.</p>

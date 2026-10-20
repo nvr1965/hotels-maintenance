@@ -9,6 +9,8 @@ class GeminiOCR
     //   <?php return ['gemini_api_key' => '...', 'openrouter_api_key' => ''];
     public static function secret(string $name): string
     {
+        // Ключ, введённый в админке («Переводчики»), тоже годится — общий с переводом
+        if (function_exists('app_secret')) return app_secret($name);
         static $s = null;
         if ($s === null) {
             $f = __DIR__ . '/secrets.php';

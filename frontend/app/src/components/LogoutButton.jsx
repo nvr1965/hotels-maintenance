@@ -2,20 +2,15 @@
 // Выход только после «Выйти» в окне; «Отмена», нажатие на фон или Esc — остаёмся.
 import { useEffect } from 'react';
 import { BRAND } from './BrandLogo';
+import { uiText, dirOf } from '../i18n';
 
-const ui = {
-    ru: { title: 'Выйти', question: 'Вы действительно хотите покинуть приложение?', yes: 'Выйти', no: 'Отмена' },
-    en: { title: 'Log out', question: 'Do you really want to leave the app?', yes: 'Log out', no: 'Cancel' },
-    he: { title: 'יציאה', question: 'האם אתה בטוח שברצונך לצאת מהאפליקציה?', yes: 'יציאה', no: 'ביטול' },
-    ar: { title: 'خروج', question: 'هل تريد حقاً مغادرة التطبيق؟', yes: 'خروج', no: 'إلغاء' }
-};
 
-export const logoutText = (lang) => ui[lang] || ui.ru;
+export const logoutText = (lang) => uiText('logout', lang);
 
 // Окно «Вы действительно хотите покинуть приложение?»
-export function LogoutConfirm({ lang = 'ru', onCancel, onConfirm }) {
+export function LogoutConfirm({ lang = 'en', onCancel, onConfirm }) {
     const text = logoutText(lang);
-    const dir = lang === 'he' || lang === 'ar' ? 'rtl' : 'ltr';
+    const dir = dirOf(lang);
 
     useEffect(() => {
         const onKey = (e) => { if (e.key === 'Escape') onCancel(); };

@@ -11,23 +11,20 @@ header('Content-Type: application/json; charset=utf-8');
 
 // ---- Исполнители отеля (только роль worker, заблокированных не показываем) ----
 $workers = [];
-foreach (db_all("SELECT u.id, u.display_name FROM hotel_members m JOIN users u ON u.id = m.user_id AND u.active = 1
-                 WHERE m.hotel_id = ? AND m.role = 'worker' AND m.active = 1 ORDER BY u.display_name ASC", [$hid]) as $w) {
+foreach (db_all("SELECT u.id, u.display_name FROM hotel_members m JOIN users u ON u.id = m.user_id AND u.active
+                 WHERE m.hotel_id = ? AND m.role = 'worker' AND m.active ORDER BY u.display_name ASC", [$hid]) as $w) {
     $workers[] = ['id' => (int)$w['id'], 'name' => $w['display_name']];
 }
 
 // ---- Номера: только объекты с числовым ключом (комнаты), сгруппированные по зданию и этажу ----
 $tree = [];
-$res = $db->query("SELECT id, building, floor, asset_key
-                    FROM hotel_assets
-                    WHERE hotel_id = $hid AND asset_key REGEXP '^[0-9]+$'
-                    ORDER BY building ASC, CAST(floor AS SIGNED) DESC, CAST(asset_key AS SIGNED) ASC");
-if ($res) {
-    while ($r = $res->fetch_assoc()) {
-        $b = (string)($r['building'] ?? '');
-        $f = (string)($r['floor'] ?? '');
-        $tree[$b][$f][] = ['id' => (int)$r['id'], 'name' => $r['asset_key']];
-    }
+foreach (db_all("SELECT id, building, floor, asset_key
+                 FROM hotel_assets
+                 WHERE hotel_id = ? AND asset_key ~ '^[0-9]{1,15}$'
+                 ORDER BY building ASC, CASE WHEN floor ~ '^-?[0-9]{1,9}$' THEN floor::int END DESC NULLS LAST, asset_key::bigint ASC", [$hid]) as $r) {
+    $b = (string)($r['building'] ?? '');
+    $f = (string)($r['floor'] ?? '');
+    $tree[$b][$f][] = ['id' => (int)$r['id'], 'name' => $r['asset_key']];
 }
 
 $buildings = [];

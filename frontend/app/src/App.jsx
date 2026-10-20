@@ -2,17 +2,14 @@ import { useState, useEffect } from 'react';
 import WorkerDashboard from './pages/WorkerDashboard';
 import ManagerDashboard from './pages/ManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SystemAdmin from './pages/SystemAdmin';
 import { BrandLogo, BrandEmblem } from './components/BrandLogo';
+import LangPicker from './components/LangPicker';
 import { disablePush } from './notify/push';
-import { LANGS, readCachedUser, cacheUser, clearCachedUser, fetchMe, login, logout, saveLang, installUnauthorizedHook, dropLangParam } from './auth';
-import { setBrand, useBrand, hotelTitle, loadPublicBrand, switchHotel } from './brand';
+import { readCachedUser, cacheUser, clearCachedUser, fetchMe, login, logout, saveLang, installUnauthorizedHook, dropLangParam } from './auth';
+import { setBrand, getBrand, useBrand, loadPublicBrand, switchHotel } from './brand';
+import { uiText, dirOf, languageList, loadUi, useUi } from './i18n';
 
-const loginUi = {
-    ru: { title: 'Вход в систему', login: 'Логин (Имя)', pass: 'Пароль', btn: 'Войти', remember: 'Запомнить меня', error: 'Неверный логин или пароль' },
-    en: { title: 'System Login', login: 'Username', pass: 'Password', btn: 'Login', remember: 'Remember me', error: 'Invalid login or password' },
-    he: { title: 'התחברות למערכת', login: 'שם משתמש', pass: 'סיסמה', btn: 'כניסה', remember: 'זכור אותי', error: 'שם משתמש או סיסמה שגויים' },
-    ar: { title: 'تسجيل الدخول', login: 'اسم المستخدم', pass: 'كلمة المرور', btn: 'دخول', remember: 'تذكرني', error: 'خطأ في اسم المستخدم أو كلمة المرور' }
-};
 
 // Телефон/планшет или приложение, установленное на экран (PWA)
 function isPhoneOrInstalledApp() {
@@ -25,40 +22,38 @@ function isPhoneOrInstalledApp() {
     }
 }
 
-// Окно отеля с выбором языка: заголовки на языках отеля из его настроек.
-// Показывается, пока никто не вошёл (в том числе после выхода из приложения).
-const hotelLangs = (hotel) => (hotel?.languages?.length ? hotel.languages : LANGS).filter((l) => LANGS.includes(l));
+// Куда попадает вошедший: владелец системы и поддержка — в общую админку, администратор отеля — в админку отеля,
+// остальные — в рабочую панель. Выбранный экран помнится до закрытия вкладки.
+const VIEW_KEY = 'hotelapp_view';
+const homeView = (u) => (Number(u?.is_superadmin) === 1 || u?.system_role ? 'system' : Number(u?.is_admin) === 1 ? 'admin' : 'main');
+const storedView = () => { try { return sessionStorage.getItem(VIEW_KEY); } catch { return null; } };
+const storeView = (v) => { try { if (v) sessionStorage.setItem(VIEW_KEY, v); else sessionStorage.removeItem(VIEW_KEY); } catch { /* не страшно */ } };
 
-function WelcomeScreen({ onPick }) {
-    const { hotel } = useBrand();
-    const WELCOME = hotelLangs(hotel).map((lang) => ({
-        lang, dir: ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr', text: hotelTitle(hotel, lang) || lang.toUpperCase()
-    }));
-    return (
-        <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box', background: 'var(--brand-primary, #371f20)', color: 'var(--brand-text, #f9edd3)', fontFamily: '-apple-system, sans-serif' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '16px', padding: '36px 24px', maxWidth: '700px', width: '100%', boxSizing: 'border-box', boxShadow: '0 8px 32px 0 rgba(90, 30, 15, 0.25)', border: '1px solid rgba(205, 170, 124, 0.35)', textAlign: 'center' }}>
-                <BrandLogo size={64} style={{ marginBottom: '30px' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {WELCOME.map(w => (
-                        <button key={w.lang} type="button" dir={w.dir} onClick={() => onPick(w.lang)}
-                            style={{ background: 'rgba(205, 170, 124, 0.14)', padding: '18px 24px', borderRadius: '10px', border: '1px solid rgba(205, 170, 124, 0.45)', color: 'var(--brand-text, #f9edd3)', cursor: 'pointer', fontSize: '1.5rem', fontWeight: 500, fontFamily: 'inherit' }}>
-                            {w.text}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+// Языки экрана входа: языки отеля (вход по ссылке отеля), иначе все языки системы
+const hotelLangs = (hotel) => (hotel?.languages?.length ? hotel.languages : languageList().map((l) => l.code));
+
+// Язык браузера, если он есть среди доступных (точно, потом без региона), иначе язык отеля, иначе английский
+function browserLang(available, fallback) {
+    const has = (c) => available.find((a) => a.toLowerCase() === String(c).toLowerCase());
+    for (const l of navigator.languages?.length ? navigator.languages : [navigator.language || '']) {
+        const hit = has(l) || has(String(l).split('-')[0]);
+        if (hit) return hit;
+    }
+    return has(fallback || '') || has('en') || available[0] || 'en';
 }
 
 export default function App() {
     const brand = useBrand();
+    useUi(); // перерисовать, когда придут тексты интерфейса на выбранном языке
     const [user, setUser] = useState(null);
-    const [view, setView] = useState('main'); // 'main' или 'admin'
-    // Что показывать без пользователя: 'checking' (спрашиваем сервер) | 'welcome' | 'login'
+    const [view, setViewState] = useState(() => storedView() || 'main'); // 'system' | 'admin' | 'main' | 'urgent' | 'main-work'
+    const setView = (v) => { storeView(v); setViewState(v); };
+    // Что показывать без пользователя: 'checking' (спрашиваем сервер) | 'login'
     const [screen, setScreen] = useState('checking');
     
-    const [loginLang, setLoginLang] = useState('ru'); 
+    const [loginLang, setLoginLang] = useState(() => browserLang(hotelLangs(getBrand().hotel), getBrand().hotel?.default_lang));
+    // Язык выбран вручную (или пришёл в ?lang=) — больше не подстраиваемся под браузер
+    const [langPicked, setLangPicked] = useState(false);
     // На телефоне и в установленном приложении вход запоминается всегда (галочки нет),
     // на компьютере галочка есть и отмечена по умолчанию
     const [rememberMe, setRememberMe] = useState(true);
@@ -73,13 +68,16 @@ export default function App() {
         setUser(null);
         setUsername('');
         setPassword('');
-        setView('main');
-        setScreen('welcome');
+        setView(null);
+        setViewState('main');
+        setLangPicked(false);
+        setScreen('login');
+        loadPublicBrand();
     };
 
     useEffect(() => {
         const urlLang = new URLSearchParams(window.location.search).get('lang');
-        const pickedLang = LANGS.includes(urlLang) ? urlLang : null;
+        const pickedLang = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(urlLang || '') ? urlLang : null;
         let cancelled = false;
 
         (async () => {
@@ -102,7 +100,8 @@ export default function App() {
                     saveLang(pickedLang);
                 }
                 cacheUser(u);
-                setLoginLang(u.lang || 'ru');
+                setLoginLang(u.lang || 'en');
+                if (!storedView()) setView(homeView(u));
                 setUser(u);
                 dropLangParam();
                 return;
@@ -112,7 +111,7 @@ export default function App() {
                 // Нет связи с сервером: показываем последнего запомненного, данные подтянутся с сетью
                 const cached = readCachedUser();
                 if (cached) {
-                    setLoginLang(cached.lang || 'ru');
+                    setLoginLang(cached.lang || 'en');
                     setUser(cached);
                     return;
                 }
@@ -125,16 +124,26 @@ export default function App() {
             if (cancelled) return;
 
             if (pickedLang) {
-                // Пришёл из окна выбора языка (index.php) — сразу форма входа
                 setLoginLang(pickedLang);
-                setScreen('login');
-            } else {
-                setScreen('welcome');
+                setLangPicked(true);
             }
+            setScreen('login');
         })();
 
         return () => { cancelled = true; };
     }, []);
+
+    // Тексты интерфейса на языке вошедшего (или выбранном на экране входа): сохранённые показываются сразу,
+    // свежие приходят с сервера (новый язык сервер переводит сам)
+    const uiLang = user?.lang || loginLang;
+
+    // Пока язык не выбран вручную — язык браузера среди языков отеля (список языков приходит с сервера чуть позже)
+    const langCount = languageList().length;
+    useEffect(() => {
+        if (user || langPicked) return;
+        setLoginLang(browserLang(hotelLangs(brand.hotel), brand.hotel?.default_lang));
+    }, [user, langPicked, brand.hotel, langCount]);
+    useEffect(() => { loadUi(uiLang); }, [uiLang]);
 
     // Сервер перестал узнавать пользователя (истекла сессия, вход отозван) — обратно к окну отеля
     useEffect(() => installUnauthorizedHook(() => showWelcome()), []);
@@ -170,10 +179,10 @@ export default function App() {
                 cacheUser(loggedInUser, remember);
                 setPassword('');
                 setUser(loggedInUser);
-                setView('main');
+                setView(homeView(loggedInUser));
                 dropLangParam();
             } else {
-                setLoginError(loginUi[loginLang].error);
+                setLoginError(uiText('login', loginLang).error);
             }
         } catch (error) {
             console.error('Login error:', error);
@@ -189,29 +198,25 @@ export default function App() {
         );
     }
 
-    if (!user && screen === 'welcome') {
-        return <WelcomeScreen onPick={(lang) => { setLoginLang(lang); setLoginError(''); setScreen('login'); }} />;
-    }
-
     // ФОРМА ВХОДА
     if (!user) {
-        const text = loginUi[loginLang];
+        const text = uiText('login', loginLang);
         const loginLangs = hotelLangs(brand.hotel);
-        const dir = ['he', 'ar'].includes(loginLang) ? 'rtl' : 'ltr';
+        const dir = dirOf(loginLang);
 
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f7f1eb', direction: dir }}>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100svh', background: '#f3ebe2', direction: dir, padding: '16px', boxSizing: 'border-box', fontFamily: '"HeSans", "ArSans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' }}>
                 
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', fontWeight: 'bold' }}>
-                    {loginLangs.map((l) => (
-                        <span key={l} style={{ cursor: 'pointer', padding: '6px 12px', borderRadius: '6px', background: loginLang === l ? 'var(--brand-button, #844128)' : '#fff', color: loginLang === l ? '#fff' : '#3f3530' }} onClick={() => setLoginLang(l)}>{l.toUpperCase()}</span>
-                    ))}
-                </div>
+                {loginLangs.length > 1 && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <LangPicker value={loginLang} langs={loginLangs} onPick={(l) => { setLoginLang(l); setLangPicked(true); setLoginError(''); }} />
+                    </div>
+                )}
 
-                <form onSubmit={handleLogin} style={{ background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', width: '320px', textAlign: 'center' }}>
+                <form onSubmit={handleLogin} style={{ background: '#fff', padding: '32px 24px', borderRadius: '16px', boxShadow: '0 1px 3px rgba(55,31,32,.08), 0 8px 24px rgba(55,31,32,.06)', width: '100%', maxWidth: '360px', boxSizing: 'border-box', textAlign: 'center' }}>
                     
                     <BrandLogo size={52} color="var(--brand-primary, #371f20)" style={{ marginBottom: '14px' }} />
-                    <p style={{ color: '#6e635b', marginBottom: '20px', fontSize: '16px' }}>{text.title}</p>
+                    <p style={{ color: '#7d726a', marginBottom: '20px', fontSize: '16px' }}>{text.title}</p>
                     
                     {loginError && <div style={{ color: '#c43d3d', marginBottom: '15px', fontSize: '15px', fontWeight: 'bold' }}>{loginError}</div>}
                     
@@ -221,7 +226,7 @@ export default function App() {
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required 
-                        style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px' }} 
+                        style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px', minHeight: '48px', fontFamily: 'inherit', color: '#2f2624' }} 
                     />
                     
                     <input 
@@ -230,7 +235,7 @@ export default function App() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required 
-                        style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px' }} 
+                        style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #cfc4ba', boxSizing: 'border-box', fontSize: '17px', minHeight: '48px', fontFamily: 'inherit', color: '#2f2624' }} 
                     />
                     
                     {isPersonalDevice ? <div style={{ marginBottom: '10px' }} /> : (
@@ -239,13 +244,13 @@ export default function App() {
                             type="checkbox" 
                             checked={rememberMe} 
                             onChange={(e) => setRememberMe(e.target.checked)} 
-                            style={{ width: '18px', height: '18px', accentColor: 'var(--brand-button, #844128)', cursor: 'pointer', margin: 0 }}
+                            style={{ width: '18px', height: '18px', accentColor: '#1f7a4f', cursor: 'pointer', margin: 0 }}
                         />
                         {text.remember}
                     </label>
                     )}
                     
-                    <button type="submit" style={{ width: '100%', padding: '12px', background: 'var(--brand-button, #844128)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer' }}>
+                    <button type="submit" style={{ width: '100%', minHeight: '54px', padding: '14px', background: '#1f7a4f', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: 800, fontSize: '18px', cursor: 'pointer', fontFamily: 'inherit' }}>
                         {text.btn}
                     </button>
                 </form>
@@ -255,15 +260,30 @@ export default function App() {
 
     // Безопасное определение роли и прав сисадмина
     const role = user.role ? String(user.role).trim().toLowerCase() : '';
-    const isSysAdmin = Number(user.sysadmin) === 1;
+    const isSuper = Number(user.is_superadmin) === 1 || !!user.system_role; // системный пользователь
+    const isSysAdmin = isSuper || Number(user.sysadmin) === 1;
 
-    // Если сисадмин нажал кнопку перехода в глобальную админку
+    // Владелец системы: общая админка — отели, шаблоны, языки
+    if (view === 'system' && isSuper) {
+        return (
+            <SystemAdmin
+                user={user}
+                onChangeLang={handleChangeLang}
+                onLogout={handleLogout}
+                onOpenHotel={async (id) => { storeView('admin'); if (!(await switchHotel(id))) storeView('system'); }}
+            />
+        );
+    }
+
+    // Админка отеля: администратор отеля попадает сюда сразу, владелец системы — из общей админки
     if (view === 'admin' && isSysAdmin) {
         return (
-            <AdminDashboard 
-                user={user} 
-                onBack={() => setView('main')} 
-                onChangeLang={handleChangeLang} 
+            <AdminDashboard
+                user={user}
+                onBack={() => setView(isSuper ? 'system' : 'main')}
+                backLabel={isSuper ? uiText('admin_dash', user.lang).back_system : undefined}
+                onChangeLang={handleChangeLang}
+                onLogout={handleLogout}
             />
         );
     }

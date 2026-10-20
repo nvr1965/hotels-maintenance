@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { tr, api, errText, S, Message, LANG_NAMES, LANG_LIST } from './adminUi';
+import { tr, trNs, api, errText, S, Message, Ic, langName, languageList } from './adminUi';
 import { setBrand, getBrand } from '../../brand';
+import { StructureEditor, blankStructure } from './AdminTemplates';
 
 // Админка → Сеть (для администраторов сети и владельца системы): отели сети с настройками и брендингом,
 // новый отель с копией справочников, люди в отелях сети, администраторы и наблюдатели сети.
@@ -10,50 +11,6 @@ const API = '/backend/api/net_admin.php';
 const ROLES = ['worker', 'manager', 'head'];
 const ORG_ROLES = ['org_admin', 'org_viewer'];
 
-const TXT = {
-    ru: {
-        org: 'Сеть', role_label: 'Роль', role_org: 'Роль в сети', new_org: '＋ Новая сеть', org_name: 'Название сети', slug: 'Короткое имя для адреса (латиница)',
-        hotels: 'Отели сети', new_hotel: '＋ Новый отель', members_n: (n) => `${n} чел.`, assets_n: (n) => `${n} объектов`,
-        off: 'выключен', current: 'текущий', open_hotel: 'Перейти в этот отель',
-        h_main: 'Основное', h_brand: 'Оформление', h_push: 'Уведомления о срочных заявках', h_people: 'Люди в отеле',
-        name: 'Название', address: 'Адрес', timezone: 'Часовой пояс', languages: 'Языки', default_lang: 'Язык по умолчанию',
-        title_in: (l) => `Заголовок (${l})`, subtitle: 'Подпись под названием', logo: 'Логотип: адрес картинки (/brand/… или https://…)',
-        c_primary: 'Шапка', c_accent: 'Акцент', c_text: 'Текст в шапке', c_button: 'Кнопки', active: 'Отель работает',
-        push_hint: 'Кому приходят уведомления на телефон', copy_from: 'Справочники скопировать из', copy_none: 'не копировать (пустые)',
-        preview: 'Так будет выглядеть', created: (c) => c ? `Отель создан, скопировано: объекты-термины ${c.asset_dictionary}, обход ${c.room_checklist_dict}, регламенты ${c.routine_tasks}` : 'Отель создан',
-        add_person: 'Добавить человека', from_network: 'Из других отелей сети', new_person: 'Новый человек', pick: '— выбрать —',
-        login: 'Логин', display_name: 'Имя', password: 'Пароль (минимум 6 символов)', is_admin: 'Администратор отеля', remove: 'Убрать из отеля',
-        org_people: 'Администраторы и наблюдатели сети', org_admin: 'Администратор сети', org_viewer: 'Наблюдатель',
-        org_admin_d: 'Все отели сети как администратор, заводит новые отели.', org_viewer_d: 'Все отели сети, только отчёты.',
-        remove_org: 'Убрать из сети', no_access: 'Эта вкладка для администраторов сети.',
-        err_bad_slug: 'Короткое имя: латиница, цифры и дефис, от 2 символов', err_slug_taken: 'Такое короткое имя уже занято',
-        err_bad_timezone: 'Неизвестный часовой пояс', err_languages_required: 'Выберите хотя бы один язык', err_bad_color: 'Цвет в виде #rrggbb',
-        err_bad_logo_url: 'Адрес логотипа должен начинаться с / или https://', err_login_required: 'Впишите логин',
-        err_login_taken: 'Такой логин уже есть. Если это тот же человек, добавьте его из других отелей сети', err_user_not_found: 'Человек не найден',
-        err_password_short: 'Пароль слишком короткий (минимум 6 символов)',
-    },
-    en: {
-        org: 'Network', role_label: 'Role', role_org: 'Network role', new_org: '＋ New network', org_name: 'Network name', slug: 'Short name for the address (latin)',
-        hotels: 'Hotels', new_hotel: '＋ New hotel', members_n: (n) => `${n} people`, assets_n: (n) => `${n} objects`,
-        off: 'off', current: 'current', open_hotel: 'Switch to this hotel',
-        h_main: 'Main', h_brand: 'Appearance', h_push: 'Urgent task notifications', h_people: 'People in the hotel',
-        name: 'Name', address: 'Address', timezone: 'Time zone', languages: 'Languages', default_lang: 'Default language',
-        title_in: (l) => `Title (${l})`, subtitle: 'Subtitle', logo: 'Logo image address (/brand/… or https://…)',
-        c_primary: 'Header', c_accent: 'Accent', c_text: 'Header text', c_button: 'Buttons', active: 'Hotel is active',
-        push_hint: 'Who gets phone notifications', copy_from: 'Copy dictionaries from', copy_none: 'do not copy (empty)',
-        preview: 'Preview', created: (c) => c ? `Hotel created, copied: terms ${c.asset_dictionary}, checklist ${c.room_checklist_dict}, routines ${c.routine_tasks}` : 'Hotel created',
-        add_person: 'Add a person', from_network: 'From other hotels of the network', new_person: 'New person', pick: '— choose —',
-        login: 'Login', display_name: 'Name', password: 'Password (at least 6 characters)', is_admin: 'Hotel administrator', remove: 'Remove from hotel',
-        org_people: 'Network administrators and observers', org_admin: 'Network administrator', org_viewer: 'Observer',
-        org_admin_d: 'All hotels of the network as administrator, creates hotels.', org_viewer_d: 'All hotels of the network, reports only.',
-        remove_org: 'Remove from network', no_access: 'This tab is for network administrators.',
-        err_bad_slug: 'Short name: latin letters, digits and hyphen, 2+ characters', err_slug_taken: 'This short name is taken',
-        err_bad_timezone: 'Unknown time zone', err_languages_required: 'Choose at least one language', err_bad_color: 'Color as #rrggbb',
-        err_bad_logo_url: 'Logo address must start with / or https://', err_login_required: 'Enter a login',
-        err_login_taken: 'This login exists. If it is the same person, add them from other hotels of the network', err_user_not_found: 'Person not found',
-        err_password_short: 'Password too short (at least 6 characters)',
-    },
-};
 
 const TIMEZONES = (() => {
     try { return Intl.supportedValuesOf('timeZone'); } catch { return ['UTC', 'Asia/Jerusalem', 'Europe/Moscow']; }
@@ -61,27 +18,44 @@ const TIMEZONES = (() => {
 
 const blankHotel = (orgId) => ({
     id: 0, org_id: orgId, name: '', slug: '', address: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    languages: ['ru', 'en', 'he', 'ar'], default_lang: 'ru', brand_title_ru: '', brand_title_en: '', brand_title_he: '', brand_title_ar: '',
+    languages: ['en'], default_lang: 'en', brand_title: {},
     brand_subtitle: '', logo_url: '', color_primary: '#1f3a5f', color_accent: '#c9a96e', color_text: '#ffffff', color_button: '#1f3a5f',
-    active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0,
+    active: 1, settings: { push_roles: ['worker', 'head'] }, copy_from_hotel_id: 0, template_id: 0, structure: null,
 });
 
 // Строка из списка отелей (net_admin hotels) → форма
 const toForm = (h) => ({
     id: h.id, org_id: h.org_id, name: h.name, slug: h.slug, address: h.address || '', timezone: h.timezone,
     languages: h.languages, default_lang: h.default_lang,
-    brand_title_ru: h.raw?.brand_title_ru || '', brand_title_en: h.raw?.brand_title_en || '',
-    brand_title_he: h.raw?.brand_title_he || '', brand_title_ar: h.raw?.brand_title_ar || '',
+    brand_title: { ...(h.brand_title || {}) },   // пустые языки сервер заполнит автопереводом
     brand_subtitle: h.brand.subtitle || '', logo_url: h.brand.logo_url || '',
     color_primary: h.brand.color_primary, color_accent: h.brand.color_accent, color_text: h.brand.color_text, color_button: h.brand.color_button,
     active: h.active, settings: Array.isArray(h.settings) ? {} : { ...h.settings },
 });
 
+// Все включённые языки системы (страница «Языки»), по порядку
+// Готовые цветовые гаммы: шапка, акцент, текст шапки, кнопки. После выбора каждый цвет можно поправить.
+const PALETTES = [
+    ['navy', '#1f3a5f', '#c9a96e', '#ffffff', '#1f3a5f'],
+    ['bordeaux', '#4a1c26', '#d4af7a', '#f9edd3', '#844128'],
+    ['forest', '#1f4d3a', '#c8b88a', '#f4f1e8', '#2f6f4f'],
+    ['ocean', '#0f4c5c', '#7fd1c8', '#ffffff', '#1f7a8c'],
+    ['graphite', '#2b2d31', '#e0b354', '#ffffff', '#3d4148'],
+    ['terracotta', '#7a3b2e', '#f0c27b', '#fff7ec', '#b5562f'],
+    ['violet', '#3b2a5c', '#e6c27a', '#ffffff', '#5b3f8c'],
+    ['sky', '#1e5aa8', '#ffd166', '#ffffff', '#2a74d0'],
+    ['olive', '#4a5a2a', '#e8d39a', '#fbf8ef', '#6b7f3a'],
+    ['rose', '#6b2f4a', '#f2c6d0', '#ffffff', '#9c3d6b'],
+];
+
+const SHOW_ORG_PEOPLE = false;
+const ALL_LANGS = () => languageList().map(l => l.code);
+
 const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 
-export default function AdminNetwork({ lang }) {
+export default function AdminNetwork({ lang, onOpenHotel }) {
     const base = tr(lang);
-    const t = { ...base, ...(TXT[lang] || TXT.en) };
+    const t = { ...base, ...trNs('network', lang) };
     const fail = (d) => ({ ok: false, text: errText(t, d) });
 
     const [orgs, setOrgs] = useState(null);
@@ -126,7 +100,8 @@ export default function AdminNetwork({ lang }) {
         e.preventDefault();
         const d = await post('hotel_save', form);
         if (!d.success) return;
-        setMsg({ ok: true, text: form.id ? t.saved : t.created(d.copied) });
+        setMsg({ ok: true, text: form.id ? t.saved : [d.copied ? t.created_copied(d.copied.asset_dictionary, d.copied.room_checklist_dict, d.copied.routine_tasks) : t.created,
+            d.built ? t.created_built(d.built.rooms, d.built.common) : ''].filter(Boolean).join('. ') });
         setForm(null);
         await loadOrg();
         // Правили текущий отель — сразу применить новое оформление
@@ -157,30 +132,30 @@ export default function AdminNetwork({ lang }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'start' }}>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 {orgs.length > 0 && (
-                    <label style={{ ...S.label, flex: '1 1 220px' }}>{t.org}
-                        <select style={S.field} value={orgId} onChange={e => { setOrgId(Number(e.target.value)); setForm(null); }}>
+                    <label className="ad-lab" style={{ flex: '1 1 220px' }}>{t.org}
+                        <select className="ad-fld" value={orgId} onChange={e => { setOrgId(Number(e.target.value)); setForm(null); }}>
                             {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                         </select>
                     </label>
                 )}
-                {org && <button type="button" style={S.btn} onClick={() => setOrgForm({ id: org.id, name: org.name, slug: org.slug })}>{t.edit}</button>}
-                {canCreateOrg && <button type="button" style={S.btn} onClick={() => setOrgForm({ id: 0, name: '', slug: '' })}>{t.new_org}</button>}
+                {org && <button type="button" className="ad-btn" onClick={() => setOrgForm({ id: org.id, name: org.name, slug: org.slug })}>{t.edit}</button>}
+                {canCreateOrg && <button type="button" className="ad-btn" onClick={() => setOrgForm({ id: 0, name: '', slug: '' })}>{t.new_org}</button>}
             </div>
 
             <Message msg={msg} />
 
             {orgForm && (
-                <form onSubmit={saveOrg} style={{ ...S.card, display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                    <label style={S.label}>{t.org_name}
-                        <input style={S.field} required value={orgForm.name}
+                <form onSubmit={saveOrg} className="ad-card" style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                    <label className="ad-lab">{t.org_name}
+                        <input className="ad-fld" required value={orgForm.name}
                             onChange={e => setOrgForm(f => ({ ...f, name: e.target.value, slug: f.id ? f.slug : slugify(e.target.value) }))} />
                     </label>
-                    <label style={S.label}>{t.slug}
-                        <input style={S.field} required value={orgForm.slug} onChange={e => setOrgForm(f => ({ ...f, slug: e.target.value }))} dir="ltr" />
+                    <label className="ad-lab">{t.slug}
+                        <input className="ad-fld" required value={orgForm.slug} onChange={e => setOrgForm(f => ({ ...f, slug: e.target.value }))} dir="ltr" />
                     </label>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                        <button type="button" style={S.btn} onClick={() => setOrgForm(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue" disabled={busy}>{t.save}</button>
+                        <button type="button" className="ad-btn" onClick={() => setOrgForm(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
@@ -189,15 +164,15 @@ export default function AdminNetwork({ lang }) {
                 <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         <h3 style={{ margin: 0 }}>{t.hotels}</h3>
-                        <button type="button" style={S.primary} onClick={() => { setMsg(null); setForm(blankHotel(orgId)); }}>{t.new_hotel}</button>
+                        <button type="button" className="ad-btn blue" onClick={() => { setMsg(null); setForm(blankHotel(orgId)); }}>{t.new_hotel}</button>
                     </div>
 
-                    {form && form.id === 0 && <HotelForm t={t} form={form} setForm={setForm} hotels={hotels || []} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />}
+                    {form && form.id === 0 && <HotelForm t={t} lang={lang} form={form} setForm={setForm} hotels={hotels || []} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />}
 
-                    {hotels === null ? <div style={S.hint}>{t.loading}</div> : (
+                    {hotels === null ? <div className="ad-hint">{t.loading}</div> : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {hotels.map(h => (
-                                <div key={h.id} style={S.card}>
+                                <div key={h.id} className="ad-card">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                                         <span style={{ width: '38px', height: '38px', borderRadius: '50%', flex: 'none', background: h.brand.color_primary, color: h.brand.color_accent,
                                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden' }}>
@@ -209,13 +184,14 @@ export default function AdminNetwork({ lang }) {
                                                 {h.id === currentHotelId && <span style={{ marginInlineStart: '8px', ...S.badge('#e7f6ec', '#1f6b3d') }}>{t.current}</span>}
                                                 {!h.active && <span style={{ marginInlineStart: '8px', ...S.badge('#fdecea', '#a3301c') }}>{t.off}</span>}
                                             </div>
-                                            <div style={S.hint}>{h.slug} · {h.timezone} · {t.members_n(h.members)} · {t.assets_n(h.assets)}</div>
+                                            <div className="ad-hint">{h.slug} · {h.timezone} · {t.members_n(h.members)} · {t.assets_n(h.assets)}</div>
                                         </div>
-                                        <button type="button" style={S.btn} onClick={() => { setMsg(null); setForm(form?.id === h.id ? null : toForm(h)); }}>{form?.id === h.id ? t.close : t.edit}</button>
+                                        {onOpenHotel && h.active && <button type="button" className="ad-btn blue" onClick={() => onOpenHotel(h.id)}>{t.open_hotel}</button>}
+                                        <button type="button" className="ad-btn" onClick={() => { setMsg(null); setForm(form?.id === h.id ? null : toForm(h)); }}>{form?.id === h.id ? t.close : t.edit}</button>
                                     </div>
                                     {form && form.id === h.id && (
                                         <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                            <HotelForm t={t} form={form} setForm={setForm} hotels={hotels} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />
+                                            <HotelForm t={t} lang={lang} form={form} setForm={setForm} hotels={hotels} busy={busy} onSubmit={saveHotel} onCancel={() => setForm(null)} />
                                             <HotelPeople t={t} hotelId={h.id} hotels={hotels} setMsg={setMsg} fail={fail} />
                                         </div>
                                     )}
@@ -224,17 +200,33 @@ export default function AdminNetwork({ lang }) {
                         </div>
                     )}
 
-                    <OrgPeople t={t} orgId={orgId} hotels={hotels || []} people={orgPeople} reload={loadOrg} post={post} setMsg={setMsg} busy={busy} />
+                    {/* Администраторы и наблюдатели сети — роль отложена, блок скрыт */}
+                    {SHOW_ORG_PEOPLE && <OrgPeople t={t} orgId={orgId} hotels={hotels || []} people={orgPeople} reload={loadOrg} post={post} setMsg={setMsg} busy={busy} />}
                 </>
             )}
         </div>
     );
 }
 
-function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
+function HotelForm({ t, lang, form, setForm, hotels, busy, onSubmit, onCancel }) {
+    // Шаблоны структуры (корпуса, этажи, номера) — только у владельца системы; у остальных список пуст
+    // Выбранный шаблон копируется в форму и правится тут же; сам шаблон не меняется
+    const [templates, setTemplates] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const tt = { ...t, ...trNs('tpl', lang) };
+    useEffect(() => {
+        if (form.id !== 0) return;
+        api('/backend/api/admin_templates.php?action=list').then(d => { if (d.success) setTemplates(d.items); });
+    }, [form.id]);
+    const pickTemplate = (id) => {
+        const x = templates.find(v => v.id === id);
+        setPreview(null);
+        setForm(f => ({ ...f, template_id: id, structure: id === 0 ? null : x ? JSON.parse(JSON.stringify(x.structure)) : blankStructure() }));
+    };
+    const structureBad = form.structure && !preview?.success;
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
     const toggleLang = (l) => setForm(f => {
-        const langs = f.languages.includes(l) ? f.languages.filter(x => x !== l) : LANG_LIST.filter(x => x === l || f.languages.includes(x));
+        const langs = f.languages.includes(l) ? f.languages.filter(x => x !== l) : ALL_LANGS().filter(x => x === l || f.languages.includes(x));
         return { ...f, languages: langs, default_lang: langs.includes(f.default_lang) ? f.default_lang : (langs[0] || f.default_lang) };
     });
     const pushRoles = form.settings?.push_roles || ['worker', 'head'];
@@ -243,44 +235,62 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
         return { ...f, settings: { ...f.settings, push_roles: cur.includes(r) ? cur.filter(x => x !== r) : [...cur, r] } };
     });
     const grid = { display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' };
-    const title = form[`brand_title_${form.default_lang}`] || form.name || '…';
+    const title = form.brand_title?.[form.default_lang] || form.name || '…';
 
     return (
-        <form onSubmit={onSubmit} style={{ ...S.card, background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <form onSubmit={onSubmit} className="ad-card" style={{ background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <b>{t.h_main}</b>
             <div style={grid}>
-                <label style={S.label}>{t.name}
-                    <input style={S.field} required value={form.name}
+                <label className="ad-lab">{t.name}
+                    <input className="ad-fld" required value={form.name}
                         onChange={e => { const v = e.target.value; setForm(f => ({ ...f, name: v, slug: f.id ? f.slug : slugify(v) })); }} />
                 </label>
-                <label style={S.label}>{t.slug}
-                    <input style={S.field} required dir="ltr" value={form.slug} onChange={e => set('slug', e.target.value)} />
+                <label className="ad-lab">{t.slug}
+                    <input className="ad-fld" required dir="ltr" value={form.slug} onChange={e => set('slug', e.target.value)} />
                 </label>
-                <label style={S.label}>{t.address}
-                    <input style={S.field} value={form.address} onChange={e => set('address', e.target.value)} />
+                <label className="ad-lab">{t.address}
+                    <input className="ad-fld" value={form.address} onChange={e => set('address', e.target.value)} />
                 </label>
-                <label style={S.label}>{t.timezone}
-                    <select style={S.field} value={form.timezone} onChange={e => set('timezone', e.target.value)}>
+                <label className="ad-lab">{t.timezone}
+                    <select className="ad-fld" value={form.timezone} onChange={e => set('timezone', e.target.value)}>
                         {(TIMEZONES.includes(form.timezone) ? TIMEZONES : [form.timezone, ...TIMEZONES]).map(z => <option key={z} value={z}>{z}</option>)}
                     </select>
                 </label>
             </div>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={S.label}>{t.languages}</span>
-                {LANG_LIST.map(l => (
+                <span className="ad-lab">{t.languages}</span>
+                {ALL_LANGS().map(l => (
                     <label key={l} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                        <input type="checkbox" checked={form.languages.includes(l)} onChange={() => toggleLang(l)} /> {LANG_NAMES[l]}
+                        <input type="checkbox" checked={form.languages.includes(l)} onChange={() => toggleLang(l)} /> {langName(l)}
                     </label>
                 ))}
-                <label style={{ ...S.label, flexDirection: 'row', alignItems: 'center', gap: '8px' }}>{t.default_lang}
-                    <select style={{ ...S.field, width: 'auto' }} value={form.default_lang} onChange={e => set('default_lang', e.target.value)}>
-                        {form.languages.map(l => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
+                <label className="ad-lab" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>{t.default_lang}
+                    <select className="ad-fld" style={{ width: 'auto' }} value={form.default_lang} onChange={e => set('default_lang', e.target.value)}>
+                        {form.languages.map(l => <option key={l} value={l}>{langName(l)}</option>)}
                     </select>
                 </label>
             </div>
+            {form.id === 0 && templates && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <label className="ad-lab">{t.template}
+                        <select className="ad-fld" value={form.template_id || 0} onChange={e => pickTemplate(Number(e.target.value))}>
+                            <option value={0}>{t.template_none}</option>
+                            {templates.map(x => <option key={x.id} value={x.id}>{x.name} — {t.template_sum(x.summary.buildings, x.summary.rooms)}</option>)}
+                            <option value={-1}>{t.template_own}</option>
+                        </select>
+                    </label>
+                    {form.structure && (
+                        <div className="ad-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div className="ad-hint">{t.template_edit_hint}</div>
+                            <StructureEditor t={tt} lang={lang} structure={form.structure}
+                                setStructure={(fn) => setForm(f => ({ ...f, structure: fn(f.structure) }))} onPreview={setPreview} />
+                        </div>
+                    )}
+                </div>
+            )}
             {form.id === 0 && (
-                <label style={S.label}>{t.copy_from}
-                    <select style={S.field} value={form.copy_from_hotel_id} onChange={e => set('copy_from_hotel_id', Number(e.target.value))}>
+                <label className="ad-lab">{t.copy_from}
+                    <select className="ad-fld" value={form.copy_from_hotel_id} onChange={e => set('copy_from_hotel_id', Number(e.target.value))}>
                         <option value={0}>{t.copy_none}</option>
                         {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                     </select>
@@ -291,28 +301,47 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
             </label>
 
             <b>{t.h_brand}</b>
+            <div className="ad-hint">{t.title_hint}</div>
             <div style={grid}>
                 {form.languages.map(l => (
-                    <label key={l} style={S.label}>{t.title_in(LANG_NAMES[l])}
-                        <input style={S.field} dir="auto" value={form[`brand_title_${l}`]} placeholder={form.name} onChange={e => set(`brand_title_${l}`, e.target.value)} />
+                    <label key={l} className="ad-lab">{t.title_in(langName(l))}
+                        <input className="ad-fld" dir="auto" value={form.brand_title?.[l] || ''} placeholder={form.name}
+                            onChange={e => { const v = e.target.value; setForm(f => ({ ...f, brand_title: { ...f.brand_title, [l]: v } })); }} />
                     </label>
                 ))}
-                <label style={S.label}>{t.subtitle}
-                    <input style={S.field} dir="auto" value={form.brand_subtitle} onChange={e => set('brand_subtitle', e.target.value)} />
+                <label className="ad-lab">{t.subtitle}
+                    <input className="ad-fld" dir="auto" value={form.brand_subtitle} onChange={e => set('brand_subtitle', e.target.value)} />
                 </label>
-                <label style={S.label}>{t.logo}
-                    <input style={S.field} dir="ltr" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} />
+                <label className="ad-lab">{t.logo}
+                    <input className="ad-fld" dir="ltr" value={form.logo_url} onChange={e => set('logo_url', e.target.value)} />
                 </label>
+            </div>
+            <div className="ad-lab">{t.palettes}
+                <div style={{ display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', fontWeight: 400 }}>
+                    {PALETTES.map(([key, primary, accent, text, button]) => {
+                        const on = form.color_primary === primary && form.color_accent === accent && form.color_text === text && form.color_button === button;
+                        return (
+                            <button key={key} type="button" aria-pressed={on}
+                                onClick={() => setForm(f => ({ ...f, color_primary: primary, color_accent: accent, color_text: text, color_button: button }))}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '10px', cursor: 'pointer', background: primary, color: text,
+                                    border: on ? '3px solid #2b2320' : '3px solid transparent', boxShadow: '0 0 0 1px #d9cec5', fontFamily: 'inherit', fontSize: '14px', textAlign: 'start' }}>
+                                <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: accent, flex: 'none' }} />
+                                <span style={{ flex: 1, minWidth: 0 }}>{t['pal_' + key]}</span>
+                                <span style={{ width: '14px', height: '20px', borderRadius: '4px', background: button, flex: 'none', boxShadow: '0 0 0 1px rgba(255,255,255,0.5)' }} />
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 {['color_primary', 'color_accent', 'color_text', 'color_button'].map(c => (
-                    <label key={c} style={{ ...S.label, alignItems: 'flex-start' }}>{t['c_' + c.slice(6)]}
+                    <label key={c} className="ad-lab" style={{ alignItems: 'flex-start' }}>{t['c_' + c.slice(6)]}
                         <input type="color" value={form[c]} onChange={e => set(c, e.target.value)} style={{ width: '64px', height: '40px', border: '1px solid #d9cec5', borderRadius: '8px', padding: '2px', background: '#fff' }} />
                     </label>
                 ))}
             </div>
             <div>
-                <div style={S.hint}>{t.preview}</div>
+                <div className="ad-hint">{t.preview}</div>
                 <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '12px', background: form.color_primary, color: form.color_text, flexWrap: 'wrap' }}>
                     <span style={{ width: '40px', height: '40px', borderRadius: '50%', background: form.color_accent, color: form.color_primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flex: 'none' }}>
                         {form.logo_url ? <img src={form.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : (form.name || '?').slice(0, 1).toUpperCase()}
@@ -327,7 +356,7 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
 
             <b>{t.h_push}</b>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={S.hint}>{t.push_hint}:</span>
+                <span className="ad-hint">{t.push_hint}:</span>
                 {ROLES.map(r => (
                     <label key={r} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                         <input type="checkbox" checked={pushRoles.includes(r)} onChange={() => togglePush(r)} /> {t['role_' + r]}
@@ -336,8 +365,8 @@ function HotelForm({ t, form, setForm, hotels, busy, onSubmit, onCancel }) {
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="submit" style={S.primary} disabled={busy}>{t.save}</button>
-                <button type="button" style={S.btn} onClick={onCancel}>{t.cancel}</button>
+                <button type="submit" className="ad-btn blue" disabled={busy || structureBad}>{t.save}</button>
+                <button type="button" className="ad-btn" onClick={onCancel}>{t.cancel}</button>
             </div>
         </form>
     );
@@ -380,21 +409,21 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
         if (!d.success) setMsg(fail(d)); else { setMsg({ ok: true, text: t.deleted }); load(); }
     };
 
-    if (people === null) return <div style={S.hint}>{t.loading}</div>;
+    if (people === null) return <div className="ad-hint">{t.loading}</div>;
     const inHotel = new Set(people.map(p => p.id));
     const candidates = others.filter(o => !inHotel.has(o.id));
 
     return (
-        <div style={{ ...S.card, background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="ad-card" style={{ background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <b>{t.h_people}</b>
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
                         {people.map(m => (
                             <tr key={m.id} style={{ opacity: m.active && m.user_active ? 1 : 0.5 }}>
-                                <td style={S.td}><b dir="auto">{m.display_name}</b><div style={S.hint} dir="ltr">{m.login}</div></td>
+                                <td style={S.td}><b dir="auto">{m.display_name}</b><div className="ad-hint" dir="ltr">{m.login}</div></td>
                                 <td style={S.td}>
-                                    <select style={{ ...S.field, width: 'auto' }} value={m.role} onChange={e => save({ user_id: m.id, role: e.target.value, is_admin: m.is_admin, active: m.active })}>
+                                    <select className="ad-fld" style={{ width: 'auto' }} value={m.role} onChange={e => save({ user_id: m.id, role: e.target.value, is_admin: m.is_admin, active: m.active })}>
                                         {ROLES.map(r => <option key={r} value={r}>{t['role_' + r]}</option>)}
                                     </select>
                                 </td>
@@ -403,7 +432,7 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
                                         <input type="checkbox" checked={!!m.is_admin} onChange={e => save({ user_id: m.id, role: m.role, is_admin: e.target.checked ? 1 : 0, active: m.active })} /> {t.is_admin}
                                     </label>
                                 </td>
-                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" style={S.danger} onClick={() => remove(m)}>{t.remove}</button></td>
+                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" className="ad-btn danger" onClick={() => remove(m)}>{t.remove}</button></td>
                             </tr>
                         ))}
                     </tbody>
@@ -411,7 +440,7 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
             </div>
 
             {!add ? (
-                <div><button type="button" style={S.btn} onClick={() => setAdd({ mode: candidates.length ? 'network' : 'new', user_id: 0, login: '', display_name: '', password: '', role: 'worker', is_admin: 0 })}>{t.add_person}</button></div>
+                <div><button type="button" className="ad-btn" onClick={() => setAdd({ mode: candidates.length ? 'network' : 'new', user_id: 0, login: '', display_name: '', password: '', role: 'worker', is_admin: 0 })}>{t.add_person}</button></div>
             ) : (
                 <form onSubmit={async e => {
                     e.preventDefault();
@@ -426,21 +455,21 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
                     </div>
                     <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                         {add.mode === 'network' ? (
-                            <label style={S.label}>{t.display_name}
-                                <select style={S.field} required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
+                            <label className="ad-lab">{t.display_name}
+                                <select className="ad-fld" required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
                                     <option value="">{t.pick}</option>
                                     {candidates.map(c => <option key={c.id} value={c.id}>{c.display_name} ({c.login})</option>)}
                                 </select>
                             </label>
                         ) : (
                             <>
-                                <label style={S.label}>{t.login}<input style={S.field} required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
-                                <label style={S.label}>{t.display_name}<input style={S.field} value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
-                                <label style={S.label}>{t.password}<input style={S.field} required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.login}<input className="ad-fld" required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.display_name}<input className="ad-fld" value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.password}<input className="ad-fld" required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
                             </>
                         )}
-                        <label style={S.label}>{t.role_label}
-                            <select style={S.field} value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
+                        <label className="ad-lab">{t.role_label}
+                            <select className="ad-fld" value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
                                 {ROLES.map(r => <option key={r} value={r}>{t['role_' + r]}</option>)}
                             </select>
                         </label>
@@ -449,8 +478,8 @@ function HotelPeople({ t, hotelId, hotels, setMsg, fail }) {
                         <input type="checkbox" checked={!!add.is_admin} onChange={e => setAdd(a => ({ ...a, is_admin: e.target.checked ? 1 : 0 }))} /> {t.is_admin}
                     </label>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="submit" style={S.primary}>{t.add}</button>
-                        <button type="button" style={S.btn} onClick={() => setAdd(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue">{t.add}</button>
+                        <button type="button" className="ad-btn" onClick={() => setAdd(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}
@@ -486,28 +515,28 @@ function OrgPeople({ t, orgId, hotels, people, reload, post, setMsg, busy }) {
     };
 
     return (
-        <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="ad-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <h3 style={{ margin: 0 }}>{t.org_people}</h3>
-            <div style={S.hint}>{t.org_admin}: {t.org_admin_d} {t.org_viewer}: {t.org_viewer_d}</div>
+            <div className="ad-hint">{t.org_admin}: {t.org_admin_d} {t.org_viewer}: {t.org_viewer_d}</div>
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
                         {people.map(p => (
                             <tr key={p.id}>
-                                <td style={S.td}><b dir="auto">{p.display_name}</b><div style={S.hint} dir="ltr">{p.login}</div></td>
+                                <td style={S.td}><b dir="auto">{p.display_name}</b><div className="ad-hint" dir="ltr">{p.login}</div></td>
                                 <td style={S.td}>
-                                    <select style={{ ...S.field, width: 'auto' }} value={p.role} onChange={e => change({ user_id: p.id, role: e.target.value })}>
+                                    <select className="ad-fld" style={{ width: 'auto' }} value={p.role} onChange={e => change({ user_id: p.id, role: e.target.value })}>
                                         {ORG_ROLES.map(r => <option key={r} value={r}>{t[r]}</option>)}
                                     </select>
                                 </td>
-                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" style={S.danger} onClick={() => remove(p)}>{t.remove_org}</button></td>
+                                <td style={{ ...S.td, textAlign: 'end' }}><button type="button" className="ad-btn danger" onClick={() => remove(p)}>{t.remove_org}</button></td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
             {!add ? (
-                <div><button type="button" style={S.btn} onClick={() => setAdd({ mode: 'network', user_id: 0, login: '', display_name: '', password: '', role: 'org_viewer' })}>{t.add_person}</button></div>
+                <div><button type="button" className="ad-btn" onClick={() => setAdd({ mode: 'network', user_id: 0, login: '', display_name: '', password: '', role: 'org_viewer' })}>{t.add_person}</button></div>
             ) : (
                 <form onSubmit={async e => {
                     e.preventDefault();
@@ -521,28 +550,28 @@ function OrgPeople({ t, orgId, hotels, people, reload, post, setMsg, busy }) {
                     </div>
                     <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', alignItems: 'end' }}>
                         {add.mode === 'network' ? (
-                            <label style={S.label}>{t.display_name}
-                                <select style={S.field} required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
+                            <label className="ad-lab">{t.display_name}
+                                <select className="ad-fld" required value={add.user_id || ''} onChange={e => setAdd(a => ({ ...a, user_id: Number(e.target.value) }))}>
                                     <option value="">{t.pick}</option>
                                     {candidates.map(c => <option key={c.id} value={c.id}>{c.display_name} ({c.login})</option>)}
                                 </select>
                             </label>
                         ) : (
                             <>
-                                <label style={S.label}>{t.login}<input style={S.field} required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
-                                <label style={S.label}>{t.display_name}<input style={S.field} value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
-                                <label style={S.label}>{t.password}<input style={S.field} required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.login}<input className="ad-fld" required value={add.login} onChange={e => setAdd(a => ({ ...a, login: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.display_name}<input className="ad-fld" value={add.display_name} placeholder={add.login} onChange={e => setAdd(a => ({ ...a, display_name: e.target.value }))} /></label>
+                                <label className="ad-lab">{t.password}<input className="ad-fld" required minLength={6} type="password" autoComplete="new-password" value={add.password} onChange={e => setAdd(a => ({ ...a, password: e.target.value }))} /></label>
                             </>
                         )}
-                        <label style={S.label}>{t.role_org}
-                            <select style={S.field} value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
+                        <label className="ad-lab">{t.role_org}
+                            <select className="ad-fld" value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))}>
                                 {ORG_ROLES.map(r => <option key={r} value={r}>{t[r]}</option>)}
                             </select>
                         </label>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="submit" style={S.primary} disabled={busy}>{t.add}</button>
-                        <button type="button" style={S.btn} onClick={() => setAdd(null)}>{t.cancel}</button>
+                        <button type="submit" className="ad-btn blue" disabled={busy}>{t.add}</button>
+                        <button type="button" className="ad-btn" onClick={() => setAdd(null)}>{t.cancel}</button>
                     </div>
                 </form>
             )}

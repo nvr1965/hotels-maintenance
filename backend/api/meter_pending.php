@@ -30,7 +30,7 @@ function pending_row(int $id): ?array
 {
     global $hid;
     return admin_fetch_one("SELECT l.* FROM routine_log l JOIN routine_tasks rt ON rt.id = l.task_id
-                            WHERE l.id = ? AND rt.hotel_id = ? AND rt.requires_ocr = 1 AND l.ocr_raw = ?", [$id, $hid, PENDING]);
+                            WHERE l.id = ? AND rt.hotel_id = ? AND rt.requires_ocr AND l.ocr_raw = ?", [$id, $hid, PENDING]);
 }
 
 /** Все фото (не видео) записи. */
@@ -50,14 +50,14 @@ function pending_photos($mediaJson): array
 
 if ($action === 'count') {
     admin_ok(['count' => admin_count("SELECT COUNT(*) FROM routine_log l JOIN routine_tasks rt ON rt.id = l.task_id
-                                      WHERE rt.hotel_id = ? AND rt.requires_ocr = 1 AND l.ocr_raw = ?", [$hid, PENDING])]);
+                                      WHERE rt.hotel_id = ? AND rt.requires_ocr AND l.ocr_raw = ?", [$hid, PENDING])]);
 }
 
 if ($action === 'list') {
-    $meters = meter_tasks($db, $hid, $me['lang'] ?? 'ru');
-    $rows = admin_fetch_all("SELECT l.id, l.task_id, l.worker_id, w.display_name AS worker_name, l.target_date, l.closed_at, l.media, l.notes
+    $meters = meter_tasks($db, $hid, $me['lang'] ?? 'en');
+    $rows = admin_fetch_all("SELECT l.id, l.task_id, l.worker_id, w.display_name AS worker_name, l.target_date::text AS target_date, l.closed_at, l.media, l.notes
                              FROM routine_log l
-                             JOIN routine_tasks rt ON rt.id = l.task_id AND rt.requires_ocr = 1 AND rt.hotel_id = ?
+                             JOIN routine_tasks rt ON rt.id = l.task_id AND rt.requires_ocr AND rt.hotel_id = ?
                              LEFT JOIN users w ON w.id = l.worker_id
                              WHERE l.ocr_raw = ?
                              ORDER BY l.closed_at ASC, l.id ASC LIMIT 500", [$hid, PENDING]);
@@ -112,7 +112,7 @@ if ($action === 'ocr') {
     $path = realpath(__DIR__ . '/../../' . ltrim($url, '/'));
     $uploads = realpath(__DIR__ . '/../../uploads');
     if (!$path || !$uploads || !str_starts_with($path, $uploads) || !is_file($path)) admin_fail('photo_missing');
-    $meters = meter_tasks($db, $hid, 'ru');
+    $meters = meter_tasks($db, $hid, $me['lang'] ?? 'en');
     $meter = $meters[(int)$row['task_id']] ?? null;
     if (!$meter) admin_fail('not_found');
     admin_ok(['url' => $url] + meter_ocr($path, $meter));
@@ -122,12 +122,12 @@ if ($action === 'save') {
     $id = (int)($in['id'] ?? 0);
     $num = meter_number($in['value'] ?? null);
     if ($num === null) admin_fail('not_number');
-    $db->begin_transaction();
+    $db->beginTransaction();
     $row = admin_fetch_one("SELECT l.* FROM routine_log l JOIN routine_tasks rt ON rt.id = l.task_id
-                            WHERE l.id = ? AND rt.hotel_id = ? AND rt.requires_ocr = 1 AND l.ocr_raw = ? FOR UPDATE", [$id, $hid, PENDING]);
-    if (!$row) { $db->rollback(); admin_fail('already_done'); }
+                            WHERE l.id = ? AND rt.hotel_id = ? AND rt.requires_ocr AND l.ocr_raw = ? FOR UPDATE", [$id, $hid, PENDING]);
+    if (!$row) { $db->rollBack(); admin_fail('already_done'); }
     $taskId = (int)$row['task_id'];
-    $meters = meter_tasks($db, $hid, 'ru');
+    $meters = meter_tasks($db, $hid, $me['lang'] ?? 'en');
     $unit = $meters[$taskId]['unit'] ?? '';
     $value = rtrim(rtrim(number_format($num, 3, '.', ''), '0'), '.');
     $gemini = $in['gemini'] ?? null;

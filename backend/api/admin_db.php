@@ -8,12 +8,13 @@
  * POST ?action=save    {table, key: {col: val}|null, values: {col: val|null}}   key = null — новая строка
  * POST ?action=delete  {table, key: {col: val}}
  * GET  ?action=audit&table=..&limit=200
- * GET  ?action=backup  — скачать всю базу одним .sql (восстанавливается через phpMyAdmin → Импорт)
+ * GET  ?action=backup  — скачать всю базу одним .sql (pg_dump; восстанавливается через psql)
  */
 require_once __DIR__ . '/../core/admin.php';
 $me = app_current();
 if (!$me) app_json_fail(401, 'auth_required');
 if ($me['is_superadmin'] !== 1) app_json_fail(403, 'forbidden');
+if ($me['hotel']) app_apply_timezone($me['hotel']['timezone']); // время в журнале и в копии — по отелю
 
 $action = $_GET['action'] ?? 'tables';
 
@@ -42,6 +43,12 @@ function db_mask_row(string $table, array $row): array
         if (db_is_secret($table, $c)) $row[$c] = ($v === null || $v === '') ? $v : '••••••';
     }
     return $row;
+}
+
+/** Логическое значение из формы: 1/t/true/on/yes. */
+function db_truthy($v): bool
+{
+    return in_array(strtolower(trim((string)$v)), ['1', 't', 'true', 'on', 'yes'], true);
 }
 
 function db_key_of(array $keyCols, array $row): array
@@ -79,7 +86,7 @@ if ($action === 'rows') {
         $likes = [];
         foreach (array_keys($cols) as $c) {
             if (db_is_secret($table, $c)) continue;
-            $likes[] = "CAST(" . admin_q($c) . " AS CHAR) LIKE ?";
+            $likes[] = admin_q($c) . "::text ILIKE ?";
             $params[] = '%' . $q . '%';
         }
         $where = 'WHERE ' . implode(' OR ', $likes);
@@ -128,39 +135,28 @@ if ($action === 'audit') {
 }
 
 if ($action === 'backup') {
-    global $db;
+    // Копия всей базы через pg_dump: восстановление — psql -d hotels -f файл.sql
     set_time_limit(300);
-    $name = 'hotelapp-' . date('Y-m-d_H-i') . '.sql';
+    $c = app_config()['db'];
+    $cmd = ['pg_dump', '--no-owner', '--no-privileges', '--clean', '--if-exists', '-h', $c['host'], '-p', (string)(int)$c['port'],
+            '-U', $c['user'], '-d', $c['name']];
+    foreach (BACKUP_STRUCTURE_ONLY as $t) $cmd[] = '--exclude-table-data=' . $t;
+    $proc = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['PGPASSWORD' => $c['pass']] + getenv());
+    if (!is_resource($proc)) admin_fail('backup_failed');
+    $first = fread($pipes[1], 65536);
+    if ($first === '' || $first === false) {
+        error_log('hotels: pg_dump: ' . stream_get_contents($pipes[2]));
+        proc_close($proc);
+        admin_fail('backup_failed');
+    }
+    $name = 'hotels-' . date('Y-m-d_H-i') . '.sql';
     header('Content-Type: application/sql; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $name . '"');
     header('Cache-Control: no-store');
-
-    echo "-- hotelapp: копия базы " . date('Y-m-d H:i:s') . " (сделал " . $me['name'] . ")\n";
-    echo "-- Восстановление: phpMyAdmin → база hotelapp → Импорт этого файла\n\n";
-    echo "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS = 0;\n\n";
-    foreach (admin_tables() as $t) {
-        $create = $db->query("SHOW CREATE TABLE " . admin_q($t))->fetch_row();
-        if (stripos($create[1] ?? '', 'CREATE TABLE') !== 0) continue; // представления пропускаем
-        echo "DROP TABLE IF EXISTS " . admin_q($t) . ";\n" . $create[1] . ";\n\n";
-        if (in_array($t, BACKUP_STRUCTURE_ONLY, true)) continue;
-
-        $res = $db->query("SELECT * FROM " . admin_q($t), MYSQLI_USE_RESULT);
-        $batch = [];
-        $colList = null;
-        while ($r = $res->fetch_assoc()) {
-            if ($colList === null) $colList = implode(', ', array_map('admin_q', array_keys($r)));
-            $vals = array_map(fn($v) => $v === null ? 'NULL' : "'" . $db->real_escape_string($v) . "'", array_values($r));
-            $batch[] = '(' . implode(', ', $vals) . ')';
-            if (count($batch) >= 200) {
-                echo "INSERT INTO " . admin_q($t) . " ($colList) VALUES\n" . implode(",\n", $batch) . ";\n";
-                $batch = [];
-            }
-        }
-        if ($batch) echo "INSERT INTO " . admin_q($t) . " ($colList) VALUES\n" . implode(",\n", $batch) . ";\n";
-        $res->free();
-        echo "\n";
-    }
-    echo "SET FOREIGN_KEY_CHECKS = 1;\n";
+    echo "-- Hotels Maintenance: копия базы " . date('Y-m-d H:i:s') . "\n-- Восстановление: psql -d hotels -f $name\n\n";
+    echo $first;
+    fpassthru($pipes[1]);
+    proc_close($proc);
     admin_audit($me, 'backup', '*', null, null, null);
     exit;
 }
@@ -182,8 +178,8 @@ function db_guard_self(string $table, array $me, ?array $before, ?array $values,
 {
     if ($table !== 'users' || !$before || (int)$before['id'] !== $me['id']) return;
     if ($deleting) admin_fail('self_lockout');
-    if (array_key_exists('is_superadmin', $values) && (string)$values['is_superadmin'] !== '1') admin_fail('self_lockout');
-    if (array_key_exists('active', $values) && (string)$values['active'] !== '1') admin_fail('self_lockout');
+    if (array_key_exists('is_superadmin', $values) && !db_truthy($values['is_superadmin'])) admin_fail('self_lockout');
+    if (array_key_exists('active', $values) && !db_truthy($values['active'])) admin_fail('self_lockout');
     if (array_key_exists('id', $values) && (string)$values['id'] !== (string)$me['id']) admin_fail('self_lockout');
 }
 
@@ -209,15 +205,9 @@ if ($action === 'save') {
 
     if ($key === null) {
         $names = array_keys($data);
-        admin_exec("INSERT INTO " . admin_q($table) . " (" . implode(', ', array_map('admin_q', $names)) . ")
-                    VALUES (" . implode(', ', array_fill(0, count($names), '?')) . ")", array_values($data));
-        global $db;
-        // Ключ новой строки: автонумерация или то, что ввели
-        $newKey = [];
-        foreach ($keyCols as $c) {
-            $newKey[$c] = (stripos((string)$cols[$c]['Extra'], 'auto_increment') !== false && !isset($data[$c]))
-                ? (string)$db->insert_id : ($data[$c] ?? null);
-        }
+        $row = admin_fetch_one("INSERT INTO " . admin_q($table) . " (" . implode(', ', array_map('admin_q', $names)) . ")
+                    VALUES (" . implode(', ', array_fill(0, count($names), '?')) . ") RETURNING *", array_values($data));
+        $newKey = db_key_of($keyCols, $row); // ключ новой строки, с выданным базой номером
         $after = db_load($table, $keyCols, $newKey);
         admin_audit($me, 'insert', $table, $newKey, null, $after);
         admin_ok(['key' => $newKey]);
@@ -234,9 +224,9 @@ if ($action === 'save') {
         $params[] = $v;
     }
     [$w, $wp] = admin_where($keyCols, $key);
-    admin_exec("UPDATE " . admin_q($table) . " SET " . implode(', ', $sets) . " WHERE $w LIMIT 1", array_merge($params, $wp));
+    admin_exec("UPDATE " . admin_q($table) . " SET " . implode(', ', $sets) . " WHERE $w", array_merge($params, $wp));
 
-    if ($table === 'users' && (isset($data['password_hash']) || (isset($data['active']) && $data['active'] === '0'))) {
+    if ($table === 'users' && (isset($data['password_hash']) || (isset($data['active']) && !db_truthy($data['active'])))) {
         app_forget_user_tokens((int)$before['id']);
     }
     $newKey = $key;
@@ -251,7 +241,7 @@ if ($action === 'delete') {
     if (!$before) admin_fail('not_found');
     db_guard_self($table, $me, $before, null, true);
     [$w, $wp] = admin_where($keyCols, $key);
-    admin_exec("DELETE FROM " . admin_q($table) . " WHERE $w LIMIT 1", $wp);
+    admin_exec("DELETE FROM " . admin_q($table) . " WHERE $w", $wp);
     admin_audit($me, 'delete', $table, $key, $before, null);
     admin_ok();
 }

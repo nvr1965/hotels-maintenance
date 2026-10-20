@@ -1,18 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { uiText } from '../i18n';
+import './mgr/mgr.css';
 
-// Пошаговый выбор объекта: здание → этаж → объекты/номера → выпадающий список.
+// Пошаговый выбор объекта кнопками: здание → этаж → объекты/номера → сам объект.
 // locations приходят из get_assets.php: { id, name, short, building, floor, is_room }
 
-const ui = {
-    ru: { building: 'Здание', floor: 'Этаж', kind: 'Что выбираем', objects: '🛠 Объекты', rooms: '🛏 Номера',
-          room: 'Номер', none: 'не указано', pick_object: '-- Выберите объект --', pick_room: '-- Выберите номер --', empty: 'Здесь ничего нет' },
-    en: { building: 'Building', floor: 'Floor', kind: 'What', objects: '🛠 Objects', rooms: '🛏 Rooms',
-          room: 'Room', none: 'not set', pick_object: '-- Select object --', pick_room: '-- Select room --', empty: 'Nothing here' },
-    he: { building: 'בניין', floor: 'קומה', kind: 'מה לבחור', objects: '🛠 מתקנים', rooms: '🛏 חדרים',
-          room: 'חדר', none: 'לא צוין', pick_object: '-- בחר מתקן --', pick_room: '-- בחר חדר --', empty: 'אין כאן כלום' },
-    ar: { building: 'مبنى', floor: 'طابق', kind: 'ماذا تختار', objects: '🛠 المرافق', rooms: '🛏 الغرف',
-          room: 'غرفة', none: 'غير محدد', pick_object: '-- اختر المرفق --', pick_room: '-- اختر الغرفة --', empty: 'لا يوجد شيء هنا' }
-};
 
 // Естественная сортировка: «2» < «10», «-1» < «0», буквы по алфавиту
 const naturalCompare = (a, b) => {
@@ -25,19 +17,16 @@ const naturalCompare = (a, b) => {
 
 const uniqueSorted = (arr) => [...new Set(arr)].sort(naturalCompare);
 
-const chipStyle = (active, disabled) => ({
-    padding: '10px 16px', minWidth: '52px', borderRadius: '10px', fontSize: '18px', fontWeight: 'bold',
-    cursor: disabled ? 'default' : 'pointer',
-    border: active ? '2px solid var(--brand-button, #844128)' : '1px solid #d6cbc1',
-    background: active ? 'var(--brand-button, #844128)' : '#fff',
-    color: active ? '#fff' : '#3f3530',
-    opacity: disabled ? 0.4 : 1
-});
-
-const stepLabel = { display: 'block', margin: '0 0 8px', fontWeight: 'bold', color: '#5a4f48', fontSize: '16px' };
+function Chip({ on, disabled, onClick, children }) {
+    return (
+        <button type="button" className={'mgr-chp' + (on ? ' on' : '')} aria-pressed={!!on} disabled={disabled} onClick={onClick}>
+            <bdi>{children}</bdi>
+        </button>
+    );
+}
 
 export default function AssetPicker({ locations, value, onChange, lang }) {
-    const t = ui[lang] || ui.ru;
+    const t = uiText('asset_picker', lang);
     const [building, setBuilding] = useState(null);
     const [floor, setFloor] = useState(null);
     const [kind, setKind] = useState(null); // 'room' | 'object'
@@ -85,63 +74,52 @@ export default function AssetPicker({ locations, value, onChange, lang }) {
     const pickKind = (k) => { setKind(k); onChange(''); };
 
     const show = (v) => (v === '' ? t.none : v);
-    const optionLabel = (l) => isRoom(l) ? `${t.room} ${l.short}` : (l.short || l.name);
+    const chipLabel = (l) => isRoom(l) ? l.short : (l.short || l.name);
+    const placeLabel = (l) => isRoom(l) ? `${t.room} ${l.short}` : (l.short || l.name);
+    const picked = value ? locations.find(l => String(l.id) === String(value)) : null;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'start' }}>
-            <div>
-                <span style={stepLabel}>1. {t.building}</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {buildings.map(b => (
-                        <button key={b || '_'} type="button" onClick={() => pickBuilding(b)} style={chipStyle(building === b)}>{show(b)}</button>
-                    ))}
+        <div className="mgr-pick">
+            <div className="mgr-lab">{t.building}
+                <div className="mgr-chips">
+                    {buildings.map(b => <Chip key={b || '_'} on={building === b} onClick={() => pickBuilding(b)}>{show(b)}</Chip>)}
                 </div>
             </div>
 
             {building !== null && (
-                <div>
-                    <span style={stepLabel}>2. {t.floor}</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {floors.map(f => (
-                            <button key={f || '_'} type="button" onClick={() => pickFloor(f)} style={chipStyle(floor === f)}>{show(f)}</button>
-                        ))}
+                <div className="mgr-lab">{t.floor}
+                    <div className="mgr-chips">
+                        {floors.map(f => <Chip key={f || '_'} on={floor === f} onClick={() => pickFloor(f)}>{show(f)}</Chip>)}
                     </div>
                 </div>
             )}
 
             {floor !== null && (
-                <div>
-                    <span style={stepLabel}>3. {t.kind}</span>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="button" disabled={objectCount === 0} onClick={() => pickKind('object')}
-                            style={{ ...chipStyle(kind === 'object', objectCount === 0), flex: 1 }}>
-                            {t.objects} ({objectCount})
-                        </button>
-                        <button type="button" disabled={roomCount === 0} onClick={() => pickKind('room')}
-                            style={{ ...chipStyle(kind === 'room', roomCount === 0), flex: 1 }}>
-                            {t.rooms} ({roomCount})
-                        </button>
+                <div className="mgr-lab">{t.kind}
+                    <div className="mgr-chips">
+                        <Chip on={kind === 'object'} disabled={objectCount === 0} onClick={() => pickKind('object')}>{t.objects}</Chip>
+                        <Chip on={kind === 'room'} disabled={roomCount === 0} onClick={() => pickKind('room')}>{t.rooms}</Chip>
                     </div>
                 </div>
             )}
 
             {kind !== null && (
-                <div>
-                    <span style={stepLabel}>4. {kind === 'room' ? t.rooms : t.objects}</span>
-                    {options.length === 0 ? (
-                        <div style={{ color: '#6e635b', fontStyle: 'italic' }}>{t.empty}</div>
-                    ) : (
-                        <select
-                            value={value}
-                            onChange={(e) => onChange(e.target.value)}
-                            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: value ? '2px solid var(--brand-button, #844128)' : '1px solid #cfc4ba', fontSize: '18px', background: '#fff' }}
-                        >
-                            <option value="">{kind === 'room' ? t.pick_room : t.pick_object}</option>
+                options.length === 0
+                    ? <div className="mgr-hint">{t.empty}</div>
+                    : (
+                        <div className="mgr-chips" role="group" aria-label={kind === 'room' ? t.rooms : t.objects}>
                             {options.map(loc => (
-                                <option key={loc.id} value={loc.id}>{optionLabel(loc)}</option>
+                                <Chip key={loc.id} on={String(value) === String(loc.id)}
+                                    onClick={() => onChange(String(value) === String(loc.id) ? '' : String(loc.id))}>{chipLabel(loc)}</Chip>
                             ))}
-                        </select>
-                    )}
+                        </div>
+                    )
+            )}
+
+            {picked && (
+                <div className="mgr-picked">
+                    <div className="mgr-place">{placeLabel(picked)}</div>
+                    <small>{t.building} <bdi>{show(norm(picked.building))}</bdi> · {t.floor} <bdi>{show(norm(picked.floor))}</bdi></small>
                 </div>
             )}
         </div>

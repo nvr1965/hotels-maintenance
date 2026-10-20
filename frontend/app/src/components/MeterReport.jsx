@@ -1,53 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import MeterChart, { fmtNum } from './MeterChart';
+import { uiText } from '../i18n';
+import { Icon } from './head/HeadKit';
 
 // Отчёт начальника по счётчикам (регламентные задачи с распознаванием):
 // графики показаний и расхода за любой период, итоги, выгрузка в Excel (только на компьютере).
 
-const T = {
-    ru: {
-        disabled: 'Ссылка отключена. Попросите новую.',
-        from: 'С', to: 'По', p7: '7 дней', p30: '30 дней', pMonth: 'Этот месяц', pPrev: 'Прошлый месяц', p90: '3 месяца', pYear: 'Год',
-        excel: '📊 Скачать Excel с графиками', loading: 'Загрузка…', error: 'Не удалось загрузить отчёт', none: 'Нет счётчиков',
-        empty: 'За этот период показаний нет', last: 'Последнее', cons: 'Расход за период', avg: 'В среднем в сутки',
-        used: 'Израсходовано', refills: 'Пополнений', readings: 'Показаний', anomalies: 'Сомнительных',
-        perDay: 'расход в сутки', photo: 'фото', anomaly: 'меньше прошлого — проверьте фото', table: 'Все показания',
-        date: 'Дата', value: 'Показание', delta: 'Изменение', hint: 'Нажмите на точку графика, чтобы увидеть значение и фото',
-    },
-    en: {
-        disabled: 'This link is disabled. Ask for a new one.',
-        from: 'From', to: 'To', p7: '7 days', p30: '30 days', pMonth: 'This month', pPrev: 'Last month', p90: '3 months', pYear: 'Year',
-        excel: '📊 Download Excel with charts', loading: 'Loading…', error: 'Could not load the report', none: 'No meters',
-        empty: 'No readings in this period', last: 'Last', cons: 'Consumption', avg: 'Average per day',
-        used: 'Used', refills: 'Refills', readings: 'Readings', anomalies: 'Doubtful',
-        perDay: 'per day', photo: 'photo', anomaly: 'lower than before — check the photo', table: 'All readings',
-        date: 'Date', value: 'Reading', delta: 'Change', hint: 'Tap a point to see its value and photo',
-    },
-    he: {
-        disabled: 'הקישור אינו פעיל. בקשו קישור חדש.',
-        from: 'מ-', to: 'עד', p7: '7 ימים', p30: '30 ימים', pMonth: 'החודש', pPrev: 'חודש קודם', p90: '3 חודשים', pYear: 'שנה',
-        excel: '📊 הורדת Excel עם גרפים', loading: 'טוען…', error: 'טעינת הדוח נכשלה', none: 'אין מונים',
-        empty: 'אין קריאות בתקופה זו', last: 'אחרונה', cons: 'צריכה בתקופה', avg: 'ממוצע ליום',
-        used: 'נוצל', refills: 'מילויים', readings: 'קריאות', anomalies: 'מפוקפקות',
-        perDay: 'ליום', photo: 'תמונה', anomaly: 'נמוך מהקודם — בדקו את התמונה', table: 'כל הקריאות',
-        date: 'תאריך', value: 'קריאה', delta: 'שינוי', hint: 'לחצו על נקודה כדי לראות ערך ותמונה',
-    },
-    ar: {
-        disabled: 'هذا الرابط غير فعال. اطلبوا رابطًا جديدًا.',
-        from: 'من', to: 'إلى', p7: '7 أيام', p30: '30 يومًا', pMonth: 'هذا الشهر', pPrev: 'الشهر الماضي', p90: '3 أشهر', pYear: 'سنة',
-        excel: '📊 تنزيل Excel مع الرسوم', loading: 'جارٍ التحميل…', error: 'تعذر تحميل التقرير', none: 'لا توجد عدادات',
-        empty: 'لا توجد قراءات في هذه الفترة', last: 'الأخيرة', cons: 'الاستهلاك', avg: 'المتوسط اليومي',
-        used: 'المستهلك', refills: 'التعبئات', readings: 'القراءات', anomalies: 'مشكوك فيها',
-        perDay: 'يوميًا', photo: 'صورة', anomaly: 'أقل من السابق — تحقق من الصورة', table: 'كل القراءات',
-        date: 'التاريخ', value: 'القراءة', delta: 'التغيير', hint: 'اضغط على نقطة لرؤية القيمة والصورة',
-    },
-};
 
-const COLORS = ['#844128', '#7a5a30', '#26875a', '#371f20'];
+const COLORS = ['#2a5f96', '#1f7a4f', '#4b7bb0', '#5b6b7a'];
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
 const fmtDate = (s) => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : '—';
+
+// Короткие подписи для телефона: все кнопки периода в одну строку
 
 function presetRange(key) {
     const today = iso(new Date());
@@ -82,12 +48,8 @@ const dailyBars = (daily, from, to) => (daily || [])
     .filter(d => d.use !== null && d.date >= from && d.date <= to)
     .map(d => ({ date: d.date, value: Math.max(0, d.use) }));
 
-const chip = { display: 'flex', flexDirection: 'column', gap: '2px', padding: '10px 12px', background: '#f8efe6', borderRadius: '10px', minWidth: '120px', flex: '1 1 120px' };
-const chipLbl = { fontSize: '14px', color: '#6e635b' };
-const chipVal = { fontSize: '19px', fontWeight: 'bold', color: '#2b2320' };
-
-export default function MeterReport({ lang = 'ru', accessKey = '' }) {
-    const t = T[lang] || T.ru;
+export default function MeterReport({ lang = 'en', accessKey = '' }) {
+    const t = uiText('meter_report', lang);
     const isDesktop = useIsDesktop();
     const [preset, setPreset] = useState('p30');
     const [[from, to], setRange] = useState(() => presetRange('p30'));
@@ -112,109 +74,115 @@ export default function MeterReport({ lang = 'ru', accessKey = '' }) {
     const setFrom = (v) => { if (v) { setPreset(null); setRange([v, v > to ? v : to]); } };
     const setTo = (v) => { if (v) { setPreset(null); setRange([v < from ? v : from, v]); } };
 
-    const inputStyle = { padding: '9px 10px', borderRadius: '10px', border: '1px solid #d9cec5', fontSize: '17px', background: '#fff', minWidth: 0 };
-
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="hd">
             {/* Период */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {['p7', 'p30', 'pMonth', 'pPrev', 'p90', 'pYear'].map(k => (
-                    <button key={k} type="button" onClick={() => pick(k)}
-                        style={{ minHeight: '40px', padding: '8px 12px', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
-                            border: preset === k ? '2px solid var(--brand-button, #844128)' : '1px solid #d9cec5', background: preset === k ? '#f8efe6' : '#fff', color: preset === k ? 'var(--brand-button, #844128)' : '#3f3530' }}>
-                        {t[k]}
+            <div className="hd-pad">
+                <div className="hd-chips one mt">
+                    {['p7', 'p30', 'pMonth', 'pPrev', 'p90', 'pYear'].map(k => (
+                        <button key={k} type="button" className={'hd-chp' + (preset === k ? ' on' : '')} aria-pressed={preset === k} onClick={() => pick(k)}>
+                            <span className="lg">{t[k]}</span><span className="sm">{uiText('meter_short', lang)[k]}</span>
+                        </button>
+                    ))}
+                    <button type="button" className={'hd-chp' + (!preset ? ' on' : '')} aria-pressed={!preset} onClick={() => setPreset(null)}>
+                        {t.custom}
                     </button>
-                ))}
+                </div>
             </div>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '15px', color: '#6e635b', flex: '1 1 140px' }}>
-                    {t.from}
-                    <input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} style={inputStyle} />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '15px', color: '#6e635b', flex: '1 1 140px' }}>
-                    {t.to}
-                    <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} style={inputStyle} />
-                </label>
-                {isDesktop && (
-                    <a href={`/backend/api/export_meter_excel.php?from=${from}&to=${to}&lang=${lang}${keyQs}`}
-                        style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', padding: '10px 16px', background: '#26875a', color: '#fff', borderRadius: '10px', fontWeight: 'bold', textDecoration: 'none', fontSize: '16px' }}>
-                        {t.excel}
+            {!preset && <div className="hd-pad">
+                <div className="hd-row2">
+                    <label>{t.from}
+                        <input type="date" className="hd-fld" value={from} max={to} onChange={e => setFrom(e.target.value)} />
+                    </label>
+                    <label>{t.to}
+                        <input type="date" className="hd-fld" value={to} min={from} onChange={e => setTo(e.target.value)} />
+                    </label>
+                </div>
+            </div>}
+            {isDesktop && (
+                <div className="hd-pad">
+                    <a className="hd-btn green" href={`/backend/api/export_meter_excel.php?from=${from}&to=${to}&lang=${lang}${keyQs}`}>
+                        <Icon n="download" />{t.excel}
                     </a>
-                )}
-            </div>
+                </div>
+            )}
 
             {state.loading && !state.data ? (
-                <div style={{ textAlign: 'center', padding: '30px', color: '#6e635b' }}>{t.loading}</div>
+                <div className="hd-empty">{t.loading}</div>
             ) : state.error ? (
-                <div style={{ textAlign: 'center', padding: '30px', color: '#c43d3d' }}>{state.error === 'disabled' ? t.disabled : t.error}</div>
+                <div className="hd-empty err">{state.error === 'disabled' ? t.disabled : t.error}</div>
             ) : !state.data?.meters?.length ? (
-                <div style={{ textAlign: 'center', padding: '30px', color: '#6e635b' }}>{t.none}</div>
+                <div className="hd-empty">{t.none}</div>
             ) : (
                 <>
-                    <div style={{ fontSize: '14px', color: '#7d726a', textAlign: 'center' }}>{t.hint}</div>
-                    <div className="rm-card-grid">
+                    <div className="hd-pad hd-hint">{t.hint}</div>
+                    <div className={'hd-list grid' + (state.loading ? ' hd-loading' : '')}>
                         {state.data.meters.map((m, i) => {
                             const st = m.stats;
                             const isCounter = m.kind === 'counter';
                             const isPercent = m.unit === '%';
                             return (
-                                <div key={m.id} style={{ border: '1px solid #ebe3dc', borderRadius: '14px', padding: '14px', background: '#fff', opacity: state.loading ? 0.6 : 1 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                                        <h3 style={{ margin: 0, fontSize: '19px', color: 'var(--brand-primary, #371f20)' }}>{m.name}</h3>
-                                        <span style={{ fontSize: '15px', color: '#6e635b' }}>{t.readings}: {st.count}</span>
+                                <div key={m.id} className="hd-card">
+                                    <div className="hd-mtitle">
+                                        <div className="hd-place"><Icon n="gauge" />{m.name}</div>
                                     </div>
 
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                                        <div style={chip}>
-                                            <span style={chipLbl}>{t.last} · {fmtDate(st.last_date)}{st.last_time ? ` ${st.last_time}` : ''}</span>
-                                            <span style={chipVal}>{fmtNum(st.last, 3)} {m.unit}</span>
+                                    <div className="hd-kpis">
+                                        <div className="hd-kpi">
+                                            <small>{t.last} · <bdi>{fmtDate(st.last_date)}{st.last_time ? ` ${st.last_time}` : ''}</bdi></small>
+                                            <b><bdi>{fmtNum(st.last, 3)} {m.unit}</bdi></b>
                                         </div>
-                                        <div style={chip}>
-                                            <span style={chipLbl}>{isCounter ? t.cons : t.used}</span>
-                                            <span style={chipVal}>{fmtNum(st.consumption)} {m.unit}</span>
+                                        <div className="hd-kpi">
+                                            <small>{isCounter ? t.cons : t.used}</small>
+                                            <b><bdi>{fmtNum(st.consumption)} {m.unit}</bdi></b>
                                         </div>
-                                        <div style={chip}>
-                                            <span style={chipLbl}>{t.avg}</span>
-                                            <span style={chipVal}>{fmtNum(st.avg_per_day)} {m.unit}</span>
+                                        <div className="hd-kpi">
+                                            <small>{t.avg}</small>
+                                            <b><bdi>{fmtNum(st.avg_per_day)} {m.unit}</bdi></b>
+                                        </div>
+                                        <div className="hd-kpi">
+                                            <small>{t.readings}</small>
+                                            <b><bdi>{st.count}</bdi></b>
                                         </div>
                                         {!isCounter && st.refills > 0 && (
-                                            <div style={chip}><span style={chipLbl}>{t.refills}</span><span style={chipVal}>{st.refills}</span></div>
+                                            <div className="hd-kpi"><small>{t.refills}</small><b><bdi>{st.refills}</bdi></b></div>
                                         )}
                                         {st.anomalies > 0 && (
-                                            <div style={{ ...chip, background: '#fee2e2' }}><span style={chipLbl}>{t.anomalies}</span><span style={{ ...chipVal, color: '#c43d3d' }}>{st.anomalies}</span></div>
+                                            <div className="hd-kpi bad"><small>{t.anomalies}</small><b><bdi>{st.anomalies}</bdi></b></div>
                                         )}
                                     </div>
 
                                     {m.points.length === 0 ? (
-                                        <div style={{ textAlign: 'center', padding: '24px', color: '#7d726a' }}>{t.empty}</div>
+                                        <div className="hd-empty">{t.empty}</div>
                                     ) : (
                                         <MeterChart points={m.points} from={from} to={to} unit={m.unit} color={COLORS[i % COLORS.length]}
                                             yFixed={isPercent ? [0, 100] : null}
                                             bars={isCounter ? dailyBars(m.daily, from, to) : null}
-                                            labels={{ bars: `${t.perDay}, ${m.unit}`, perDay: t.perDay, photo: t.photo, anomaly: t.anomaly }} />
+                                            labels={{ bars: `${t.perDay}, ${m.unit}`, perDay: t.perDay, photo: t.photo, anomaly: t.anomaly }}
+                                            rtl={lang === 'he' || lang === 'ar'} />
                                     )}
 
                                     {m.points.length > 0 && (
-                                        <details style={{ marginTop: '10px' }}>
-                                            <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: 'var(--brand-button, #844128)', fontSize: '16px', padding: '6px 0' }}>{t.table}</summary>
+                                        <details className="hd-details">
+                                            <summary>{t.table}</summary>
                                             <div style={{ overflowX: 'auto' }}>
-                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '16px' }}>
+                                                <table className="hd-rtab">
                                                     <thead>
-                                                        <tr style={{ color: '#6e635b', borderBottom: '2px solid #ebe3dc' }}>
-                                                            <th style={{ padding: '6px', textAlign: 'start' }}>{t.date}</th>
-                                                            <th style={{ padding: '6px', textAlign: 'end' }}>{t.value}</th>
-                                                            <th style={{ padding: '6px', textAlign: 'end' }}>{t.delta}</th>
+                                                        <tr>
+                                                            <th style={{ textAlign: 'start' }}>{t.date}</th>
+                                                            <th style={{ textAlign: 'end' }}>{t.value}</th>
+                                                            <th style={{ textAlign: 'end' }}>{t.delta}</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {[...m.points].reverse().map(p => (
-                                                            <tr key={p.id || p.date} style={{ borderBottom: '1px solid #f3ebe2', color: p.anomaly ? '#c43d3d' : '#2b2320' }}>
-                                                                <td style={{ padding: '6px', whiteSpace: 'nowrap' }}>{fmtDate(p.date)}{p.time ? <span style={{ color: '#7d726a' }}> {p.time}</span> : null}</td>
-                                                                <td style={{ padding: '6px', textAlign: 'end', fontWeight: 'bold' }}>
-                                                                    {p.photo ? <a href={p.photo} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{fmtNum(p.value, 3)}</a> : fmtNum(p.value, 3)}
+                                                            <tr key={p.id || p.date} className={p.anomaly ? 'bad' : ''}>
+                                                                <td style={{ whiteSpace: 'nowrap' }}><bdi>{fmtDate(p.date)}</bdi>{p.time ? <span className="hd-hint"> <bdi>{p.time}</bdi></span> : null}</td>
+                                                                <td style={{ textAlign: 'end', fontWeight: 700 }}>
+                                                                    <bdi>{p.photo ? <a href={p.photo} target="_blank" rel="noreferrer">{fmtNum(p.value, 3)}</a> : fmtNum(p.value, 3)}</bdi>
                                                                 </td>
-                                                                <td style={{ padding: '6px', textAlign: 'end' }}>
-                                                                    {p.anomaly ? '⚠' : (p.delta === null ? '—' : (p.delta > 0 ? '+' : '') + fmtNum(p.delta))}
+                                                                <td style={{ textAlign: 'end' }}>
+                                                                    {p.anomaly ? <Icon n="warn" /> : <bdi>{p.delta === null ? '—' : (p.delta > 0 ? '+' : '') + fmtNum(p.delta)}</bdi>}
                                                                 </td>
                                                             </tr>
                                                         ))}
