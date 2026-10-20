@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { tr, trNs, api, errText, S, Message, Ic } from './adminUi';
+import { loadUi } from '../../i18n';
 
 // Админка → Языки (только владелец системы): языки системы и тексты интерфейса на них.
 // Новый язык добавляется строкой: тексты интерфейса сервер переводит сам, сразу после сохранения.
@@ -7,6 +8,16 @@ import { tr, trNs, api, errText, S, Message, Ic } from './adminUi';
 
 const API = '/backend/api/admin_languages.php';
 const blank = { code: '', name: '', native_name: '', rtl: false, active: true, sort_order: 100, isNew: true };
+
+// Готовые языки для добавления одним нажатием (как пресеты общего блока); любой другой — вручную
+const PRESETS = [
+    ['de', 'German', 'Deutsch'], ['fr', 'French', 'Français'], ['es', 'Spanish', 'Español'], ['it', 'Italian', 'Italiano'],
+    ['pt', 'Portuguese', 'Português'], ['uk', 'Ukrainian', 'Українська'], ['pl', 'Polish', 'Polski'], ['tr', 'Turkish', 'Türkçe'],
+    ['ro', 'Romanian', 'Română'], ['am', 'Amharic', 'አማርኛ'], ['uz', 'Uzbek', 'Oʻzbekcha'], ['kk', 'Kazakh', 'Қазақша'],
+    ['ky', 'Kyrgyz', 'Кыргызча'], ['tg', 'Tajik', 'Тоҷикӣ'], ['az', 'Azerbaijani', 'Azərbaycanca'], ['ka', 'Georgian', 'ქართული'],
+    ['hy', 'Armenian', 'Հայերեն'], ['fa', 'Persian', 'فارسی', true], ['hi', 'Hindi', 'हिन्दी'], ['th', 'Thai', 'ไทย'],
+    ['vi', 'Vietnamese', 'Tiếng Việt'], ['tl', 'Filipino', 'Filipino'], ['zh', 'Chinese', '中文'], ['ja', 'Japanese', '日本語'],
+];
 
 export default function AdminLanguages({ lang }) {
     const t = { ...tr(lang), ...trNs('langs', lang) };
@@ -49,20 +60,29 @@ export default function AdminLanguages({ lang }) {
 
     const save = async (e) => {
         e.preventDefault();
-        if (await post('save', form, form.isNew ? t.added : t.saved)) setForm(null);
+        if (await post('save', form, form.isNew ? t.added_off : t.saved)) setForm(null);
     };
 
     if (!data) return <div style={{ padding: '30px', textAlign: 'center', color: '#6e635b' }}>{t.loading}</div>;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <div className="ad-hint">{t.intro}</div>
+            <div className="ad-hint">{t.about}</div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button type="button" className="ad-btn blue" onClick={() => { setForm({ ...blank }); setMsg(null); }}>{t.add}</button>
-                <span className="ad-hint">{t.provider}: <b>{data.provider}</b></span>
             </div>
+            {!data.can_translate && <div className="ad-msg err"><Ic n="warn" /><span>{t.no_translator_hint}</span></div>}
             <Message msg={msg} />
 
+            {form?.isNew && (
+                <div className="ad-chips" style={{ flexWrap: 'wrap' }}>
+                    <span className="ad-hint" style={{ width: '100%' }}>{t.presets}</span>
+                    {PRESETS.filter(([c]) => !data.languages.some(l => l.code === c)).map(([code, name, native_name, rtl]) => (
+                        <button key={code} type="button" className={'ad-chp sm' + (form.code === code ? ' on' : '')}
+                            onClick={() => setForm(f => ({ ...f, code, name, native_name, rtl: !!rtl }))}>{native_name}</button>
+                    ))}
+                </div>
+            )}
             {form && (
                 <form onSubmit={save} className="ad-card" style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                     <label className="ad-lab">{t.code}
@@ -126,6 +146,10 @@ export default function AdminLanguages({ lang }) {
                                                 <button type="button" className="ad-btn" disabled={busy}
                                                     onClick={() => window.confirm(t.redo_confirm) && post('fill', { code: l.code, redo: 1 }, t.fill_started)}>{t.redo}</button>
                                             )}
+                                            {!l.built_in && (
+                                                <button type="button" className="ad-btn danger" disabled={busy} aria-label={t.delete}
+                                                    onClick={() => window.confirm(t.delete_confirm(l.native_name || l.name)) && post('delete', { code: l.code }, t.deleted)}><Ic n="trash" /></button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -145,7 +169,7 @@ export default function AdminLanguages({ lang }) {
 function LanguageTexts({ t, code, name, rtl, onChanged }) {
     const [rows, setRows] = useState(null);
     const [q, setQ] = useState('');
-    const [onlyAuto, setOnlyAuto] = useState(false);
+    const [show, setShow] = useState('all'); // all | auto | manual | missing
     const [drafts, setDrafts] = useState({});
     const [msg, setMsg] = useState(null);
 
@@ -169,7 +193,8 @@ function LanguageTexts({ t, code, name, rtl, onChanged }) {
 
     if (!rows) return <div style={{ padding: '20px', color: '#6e635b' }}>{t.loading}</div>;
     const ql = q.trim().toLowerCase();
-    const shown = rows.filter(r => (!onlyAuto || r.auto !== false)
+    const source = (r) => r.auto === null ? 'missing' : r.auto ? 'auto' : 'manual';
+    const shown = rows.filter(r => (show === 'all' || source(r) === show)
         && (!ql || `${r.key} ${r.en} ${r.text || ''}`.toLowerCase().includes(ql))).slice(0, 300);
 
     return (
@@ -177,9 +202,10 @@ function LanguageTexts({ t, code, name, rtl, onChanged }) {
             <b>{t.texts_of(name)}</b>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input className="ad-fld" style={{ flex: '1 1 220px', width: 'auto' }} placeholder={t.search} value={q} onChange={e => setQ(e.target.value)} />
-                <label style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                    <input type="checkbox" checked={onlyAuto} onChange={e => setOnlyAuto(e.target.checked)} /> {t.only_auto}
-                </label>
+                <select className="ad-fld" style={{ width: 'auto' }} value={show} onChange={e => setShow(e.target.value)} aria-label={t.filter}>
+                    <option value="all">{t.f_all} ({rows.length})</option>
+                    {['auto', 'manual', 'missing'].map(k => <option key={k} value={k}>{t['f_' + k]} ({rows.filter(r => source(r) === k).length})</option>)}
+                </select>
             </div>
             <div className="ad-hint">{t.texts_hint}</div>
             <Message msg={msg} />

@@ -5,16 +5,17 @@ import AdminNetwork from '../components/admin/AdminNetwork';
 import AdminTemplates from '../components/admin/AdminTemplates';
 import AdminLanguages from '../components/admin/AdminLanguages';
 import SystemUsers from '../components/admin/SystemUsers';
+import AdminTranslators from '../components/admin/AdminTranslators';
 import { useBrand } from '../brand';
 import { tr, trNs, Ic, Pane } from '../components/admin/adminUi';
 import { dirOf } from '../i18n';
 import '../components/admin/admin.css';
 
 // Общая админка: у владельца системы — отели (создать, назначить мастер-админа, войти в отель),
-// пользователи системы, шаблоны структуры, языки; у поддержки — только список отелей, чтобы войти в нужный. Всё, что внутри отеля, — в админке отеля (AdminDashboard).
+// пользователи системы, шаблоны структуры, языки, переводчики; у поддержки — только список отелей, чтобы войти в нужный. Всё, что внутри отеля, — в админке отеля (AdminDashboard).
 // Цвета свои, не отеля: это уровень над отелями.
 
-const ALL_TABS = ['hotels', 'users', 'templates', 'languages'];
+const ALL_TABS = ['hotels', 'users', 'templates', 'languages', 'translators'];
 const NAVY = '#1f3a5f';
 const SYS_COLORS = { '--brand-primary': NAVY, '--brand-button': NAVY, '--brand-text': '#ffffff', '--brand-accent': '#c9d6e6' };
 
@@ -51,6 +52,7 @@ export default function SystemAdmin({ user, onChangeLang, onLogout, onOpenHotel 
             {tab === 'users' && <Pane><SystemUsers lang={lang} /></Pane>}
             {tab === 'templates' && <Pane><AdminTemplates lang={lang} /></Pane>}
             {tab === 'languages' && <Pane><AdminLanguages lang={lang} /></Pane>}
+            {tab === 'translators' && <Pane><AdminTranslators lang={lang} /></Pane>}
         </div>
     );
 }

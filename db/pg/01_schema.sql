@@ -389,4 +389,20 @@ CREATE TABLE IF NOT EXISTS client_ops (
 );
 DELETE FROM client_ops WHERE created_at < now() - interval '60 days';
 
+-- ---------------------------------------------------------------- переводчики (блок переводов)
+-- Небольшие общие настройки: порядок переводчиков (translators), кеш списков языков сервисов (cache.*)
+CREATE TABLE IF NOT EXISTS app_settings (
+    key        text PRIMARY KEY,
+    value      jsonb NOT NULL DEFAULT 'null',
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- Сколько знаков ушло каждому переводчику за день — для дневных лимитов
+CREATE TABLE IF NOT EXISTS translator_usage (
+    provider text NOT NULL,
+    day      date NOT NULL,
+    chars    bigint NOT NULL DEFAULT 0,
+    PRIMARY KEY (provider, day)
+);
+DELETE FROM translator_usage WHERE day < CURRENT_DATE - 90;
+
 COMMIT;

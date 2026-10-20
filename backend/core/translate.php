@@ -1,12 +1,10 @@
 <?php
 /* Машинный перевод и тексты на языках.
  *
- * Сервисы (выбирается сам, или 'translate_provider' в config.local.php):
- *   google   — Google Cloud Translation, если в secrets.php есть google_translate_key;
- *   gemini   — Gemini, если есть gemini_api_key (тот же ключ, что для счётчиков);
- *   mymemory — бесплатный MyMemory без ключа (5 000 знаков в день, с 'translate_email' 50 000);
- *   fake     — без интернета, «[xx] текст»: только для проверок на своём компьютере.
- * Механизм тот же, что в Allservice (app/admin/translate.php), плюс Gemini.
+ * Сервисы — цепочка переводчиков (backend/core/Translation, как в общем блоке i18n-block): DeepL, Google, Gemini,
+ * LibreTranslate, MyMemory, Claude. Текст уходит первому настроенному и включённому сервису, который знает язык
+ * и не исчерпал дневной лимит; упал — пробуется следующий. Порядок и лимиты — на странице «Переводчики».
+ * Ключи — в secrets.php. 'translate_provider' => 'fake' в config.local.php — без интернета, «[xx] текст».
  *
  * Тексты на языках хранятся как jsonb {"ru": "…", "en": "…"}:
  *   i18n_pick($map, $lang)                       — текст на языке, иначе на английском, иначе любой;
@@ -15,172 +13,32 @@
  *   i18n_fill_hotel($hotelId, $langs)            — дописать языки во все справочники отеля.
  * Свободный текст без jsonb (заметки) — translate_cached(): кеш в translation_cache.
  */
-require_once __DIR__ . '/gemini_ocr.php';
+require_once __DIR__ . '/Translation/bootstrap.php';
 
-const TR_GOOGLE_URL = 'https://translation.googleapis.com/language/translate/v2';
-const TR_GOOGLE_BATCH = 100;
-const TR_MYMEMORY_URL = 'https://api.mymemory.translated.net/get';
-const TR_MYMEMORY_PARALLEL = 8;
-const TR_MYMEMORY_MAX_BYTES = 450;
-const TR_GEMINI_MODEL = 'gemini-flash-lite-latest';
+use Hotels\Translation\LanguageGuesser;
+use Hotels\Translation\TranslatorChain;
 
+/** Какой сервис перевёл последним (для записи в кеш), до первого перевода — 'chain'. */
 function translate_provider(): string
 {
-    $want = (string)(app_config()['translate_provider'] ?? 'auto');
-    if ($want !== 'auto') return $want;
-    if (GeminiOCR::secret('google_translate_key') !== '') return 'google';
-    if (GeminiOCR::secret('gemini_api_key') !== '') return 'gemini';
-    return 'mymemory';
+    return TranslatorChain::get()->name();
 }
 
 /**
- * Переводит тексты, сохраняя ключи. $from = '' — язык определить самим.
- * @throws RuntimeException с ошибкой сервиса
+ * Переводит тексты, сохраняя ключи. $from = '' — язык определить самим (по письменности, иначе сервис).
+ * @throws RuntimeException если ни один сервис не смог
  */
 function translate_texts(array $texts, string $from, string $to): array
 {
     $texts = array_filter($texts, fn($t) => trim((string)$t) !== '');
     if (!$texts || $from === $to) return $texts;
-    switch (translate_provider()) {
-        case 'google': return translate_google($texts, $from, $to);
-        case 'gemini': return translate_gemini($texts, $from, $to);
-        case 'fake':   return array_map(fn($t) => "[$to] $t", $texts);
-        default:       return translate_mymemory_split($texts, $from, $to);
+    if ($from === '') {
+        // Текст уже на языке читателя — не переводим
+        $guess = LanguageGuesser::guess(implode(' ', $texts));
+        if ($guess === $to) return $texts;
     }
-}
-
-function translate_lang_name(string $code): string
-{
-    $l = app_languages()[$code] ?? null;
-    return $l ? "{$l['name']} ($code)" : $code;
-}
-
-function translate_gemini(array $texts, string $from, string $to): array
-{
-    $keys = array_keys($texts);
-    $prompt = "You translate short texts for a hotel maintenance app (rooms, repairs, equipment, meters). "
-        . "Translate each item of the JSON array " . ($from !== '' ? 'from ' . translate_lang_name($from) . ' ' : '')
-        . "into " . translate_lang_name($to) . ". Keep numbers, room numbers, placeholders like {1}, {app}, %s and emoji exactly as they are. "
-        . "Answer with a JSON array of strings only, same length and order.\n\n"
-        . json_encode(array_values($texts), JSON_UNESCAPED_UNICODE);
-    $body = json_encode([
-        'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-        'generationConfig' => ['temperature' => 0.1, 'responseMimeType' => 'application/json'],
-    ], JSON_UNESCAPED_UNICODE);
-    $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models/' . TR_GEMINI_MODEL . ':generateContent');
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 40,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'x-goog-api-key: ' . GeminiOCR::secret('gemini_api_key')],
-    ]);
-    $res = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err = curl_error($ch);
-    curl_close($ch);
-    $data = is_string($res) ? json_decode($res, true) : null;
-    $raw = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
-    $arr = is_string($raw) ? json_decode($raw, true) : null;
-    if ($code !== 200 || !is_array($arr) || count($arr) !== count($keys)) {
-        throw new RuntimeException('Gemini: ' . ($data['error']['message'] ?? ($err ?: "HTTP $code")));
-    }
-    $out = [];
-    foreach ($keys as $i => $k) $out[$k] = trim((string)$arr[$i]);
-    return $out;
-}
-
-function translate_google(array $texts, string $from, string $to): array
-{
-    $out = [];
-    foreach (array_chunk($texts, TR_GOOGLE_BATCH, true) as $chunk) {
-        $body = http_build_query(['target' => $to, 'format' => 'text'] + ($from !== '' ? ['source' => $from] : []));
-        foreach ($chunk as $text) $body .= '&q=' . rawurlencode($text);
-        $ch = curl_init(TR_GOOGLE_URL . '?key=' . rawurlencode(GeminiOCR::secret('google_translate_key')));
-        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
-        $res = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err = curl_error($ch);
-        curl_close($ch);
-        $data = is_string($res) ? json_decode($res, true) : null;
-        if ($code !== 200 || !isset($data['data']['translations'])) {
-            throw new RuntimeException('Google: ' . ($data['error']['message'] ?? ($err ?: "HTTP $code")));
-        }
-        foreach (array_keys($chunk) as $i => $k) {
-            $out[$k] = trim(html_entity_decode($data['data']['translations'][$i]['translatedText'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-        }
-    }
-    return $out;
-}
-
-// MyMemory берёт не больше 500 байт за раз: длинные тексты переводятся по кускам и склеиваются
-function translate_mymemory_split(array $texts, string $from, string $to): array
-{
-    $pieces = [];
-    foreach ($texts as $k => $text) {
-        foreach (translate_split($text, TR_MYMEMORY_MAX_BYTES) as $i => $piece) $pieces["$k\x1f$i"] = $piece;
-    }
-    $out = array_fill_keys(array_keys($texts), '');
-    foreach (translate_mymemory($pieces, $from, $to) as $key => $done) {
-        [$k, $i] = explode("\x1f", (string)$key);
-        $k = array_key_exists($k, $out) ? $k : (int)$k;
-        $out[$k] .= ($i === '0' ? '' : ($pieces[$key][0] === "\n" ? "\n" : ' ')) . $done;
-    }
-    return $out;
-}
-
-function translate_split(string $text, int $max): array
-{
-    if (strlen($text) <= $max) return [$text];
-    $parts = [];
-    foreach (preg_split('/\R+/u', $text) as $p => $para) {
-        $lead = $p > 0 ? "\n" : '';
-        $buf = '';
-        foreach (preg_split('/\s+/u', $para, -1, PREG_SPLIT_NO_EMPTY) as $word) {
-            if ($buf !== '' && strlen($buf) + 1 + strlen($word) > $max) {
-                $parts[] = $lead . $buf;
-                $lead = '';
-                $buf = '';
-            }
-            $buf = $buf === '' ? mb_strcut($word, 0, $max) : "$buf $word";
-        }
-        if ($buf !== '') $parts[] = $lead . $buf;
-    }
-    return $parts;
-}
-
-function translate_mymemory(array $texts, string $from, string $to): array
-{
-    $email = (string)(app_config()['translate_email'] ?? '');
-    @set_time_limit(300);
-    $out = [];
-    foreach (array_chunk($texts, TR_MYMEMORY_PARALLEL, true) as $chunk) {
-        $mh = curl_multi_init();
-        $handles = [];
-        foreach ($chunk as $k => $text) {
-            $query = ['q' => $text, 'langpair' => ($from !== '' ? $from : 'autodetect') . "|$to"] + ($email !== '' ? ['de' => $email] : []);
-            $ch = curl_init(TR_MYMEMORY_URL . '?' . http_build_query($query));
-            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
-            curl_multi_add_handle($mh, $ch);
-            $handles[$k] = $ch;
-        }
-        do {
-            $status = curl_multi_exec($mh, $running);
-            if ($running) curl_multi_select($mh);
-        } while ($running && $status === CURLM_OK);
-        $error = '';
-        foreach ($handles as $k => $ch) {
-            $data = json_decode((string)curl_multi_getcontent($ch), true);
-            $text = $data['responseData']['translatedText'] ?? '';
-            $code = (int)($data['responseStatus'] ?? curl_getinfo($ch, CURLINFO_HTTP_CODE));
-            if ($code !== 200 || $text === '' || str_starts_with($text, 'MYMEMORY WARNING')) {
-                $error = $data['responseDetails'] ?? ($text ?: (curl_error($ch) ?: "HTTP $code"));
-            }
-            $out[$k] = trim(html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-            curl_multi_remove_handle($mh, $ch);
-            curl_close($ch);
-        }
-        curl_multi_close($mh);
-        if ($error !== '') throw new RuntimeException('MyMemory: ' . $error);
-    }
-    return $out;
+    $done = TranslatorChain::get()->translateMany(array_values(array_map('strval', $texts)), $to, $from !== '' ? $from : null);
+    return array_combine(array_keys($texts), array_map(fn($t) => trim((string)$t), $done));
 }
 
 // ---------------------------------------------------------------- тексты на языках (jsonb)

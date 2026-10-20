@@ -13,3 +13,15 @@ function app_config(): array
     $cfg = array_replace_recursive($base, is_array($local) ? $local : []);
     return $cfg;
 }
+
+/** Ключ внешнего сервиса из secrets.php (в git и архивы не входит); нет — пустая строка. */
+function app_secret(string $name): string
+{
+    static $s = null;
+    if ($s === null) {
+        $f = __DIR__ . '/secrets.php';
+        $s = is_file($f) ? require $f : [];
+        if (!is_array($s)) $s = [];
+    }
+    return trim((string)($s[$name] ?? ''));
+}

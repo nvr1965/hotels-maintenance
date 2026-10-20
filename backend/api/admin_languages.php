@@ -8,6 +8,10 @@
  * POST ?action=fill   {code, redo?}         — перевести недостающее (redo — и автоматические заново)
  * GET  ?action=texts&code=xx&q=             — тексты: ключ, английский, перевод, автоматический ли
  * POST ?action=text   {code, key, text}     — поправить перевод (пусто — вернуть автоперевод)
+ * POST ?action=delete {code}                — удалить добавленный язык (встроенные и используемые отелями — нельзя)
+ *
+ * Как в общем блоке i18n-block: новый язык добавляется выключенным и включается сам, когда интерфейс переведён;
+ * перед добавлением проверяется, что хоть один включённый переводчик знает этот язык.
  */
 require_once __DIR__ . '/../core/api.php';
 
@@ -18,6 +22,8 @@ $action = $_GET['action'] ?? 'list';
 if (!in_array($action, ['list', 'texts'], true)) api_require_post();
 $in = api_input();
 
+// Языки, с которыми система собрана: их тексты лежат в коде (lang/), удалить нельзя
+const BUILT_IN = ['en', 'ru', 'he', 'ar'];
 const LANG_CODE_RE = '/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/';
 
 function lang_row(string $code): ?array
@@ -25,13 +31,14 @@ function lang_row(string $code): ?array
     return db_one("SELECT * FROM languages WHERE code = ?", [$code]);
 }
 
-/** Перевести интерфейс на язык после ответа; один процесс на язык. */
-function lang_fill_after(array $data, string $code, bool $redo): void
+/** Перевести интерфейс на язык после ответа; один процесс на язык. $enable — включить язык, когда всё переведено. */
+function lang_fill_after(array $data, string $code, bool $redo, bool $enable = false): void
 {
-    api_ok_then($data, function () use ($code, $redo) {
+    api_ok_then($data, function () use ($code, $redo, $enable) {
         if (!db_value("SELECT pg_try_advisory_lock(hashtext(?))", ['ui_fill:' . $code])) return;
         try {
             ui_fill_language($code, $redo);
+            if ($enable && ui_missing_count($code) === 0) db_exec("UPDATE languages SET is_active = true WHERE code = ?", [$code]);
         } finally {
             db_exec("SELECT pg_advisory_unlock(hashtext(?))", ['ui_fill:' . $code]);
         }
@@ -64,9 +71,10 @@ if ($action === 'list') {
             'auto' => (int)($stats[$c]['auto'] ?? 0),
             'hotels' => (int)($hotels[$c] ?? 0),
             'filling' => $c !== 'en' && lang_filling($c),
+            'built_in' => in_array($c, BUILT_IN, true),
         ];
     }
-    api_ok(['languages' => $out, 'total' => $total, 'provider' => translate_provider()]);
+    api_ok(['languages' => $out, 'total' => $total, 'can_translate' => \Hotels\Translation\TranslatorChain::get()->available()]);
 }
 
 if ($action === 'save') {
@@ -89,11 +97,14 @@ if ($action === 'save') {
         audit($me, 'update', 'languages', $code, $before, lang_row($code));
         api_ok(['code' => $code]);
     }
+    // Перевести интерфейс некому — язык не добавляем, иначе он так и останется английским
+    if (!\Hotels\Translation\TranslatorChain::get()->supports($code)) api_fail('no_translator');
+    $data['is_active'] = false;
     db_exec("INSERT INTO languages (code, name, native_name, is_rtl, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
         array_merge([$code], array_values($data)));
     audit($me, 'insert', 'languages', $code, null, lang_row($code));
-    // Новый язык: интерфейс переводится сразу, страница «Языки» покажет, сколько готово
-    lang_fill_after(['code' => $code, 'filling' => true], $code, false);
+    // Новый язык: интерфейс переводится сразу, язык включится сам, когда всё готово
+    lang_fill_after(['code' => $code, 'filling' => true], $code, false, true);
 }
 
 if ($action === 'fill') {
@@ -136,6 +147,17 @@ if ($action === 'text') {
     }
     audit($me, 'update', 'ui_translations', ['key' => $key, 'lang' => $code], $before,
         db_one("SELECT * FROM ui_translations WHERE key = ? AND language_code = ?", [$key, $code]));
+    api_ok();
+}
+
+if ($action === 'delete') {
+    $code = (string)($in['code'] ?? '');
+    $before = lang_row($code);
+    if (!$before) api_fail('not_found');
+    if (in_array($code, BUILT_IN, true)) api_fail('built_in');
+    if (db_value("SELECT COUNT(*) FROM hotels WHERE ? = ANY(languages)", [$code]) > 0) api_fail('in_use');
+    db_exec("DELETE FROM languages WHERE code = ?", [$code]); // тексты уходят каскадом
+    audit($me, 'delete', 'languages', $code, $before, null);
     api_ok();
 }
 
