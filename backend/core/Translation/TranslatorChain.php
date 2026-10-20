@@ -92,8 +92,27 @@ class TranslatorChain implements Translator
             'note' => $catalog[$e['id']]['note'] ?? '',
             'ready' => $this->ready($e['id']),
             'needs' => $catalog[$e['id']]['needs'] ?? [],
+            'fields' => self::fields($catalog[$e['id']]['fields'] ?? []),
             'used_today' => $this->usedToday($e['id']),
         ], $this->entries);
+    }
+
+    /**
+     * Поля ключей для админки. Значение ключа наружу не отдаётся никогда — только последние 4 знака;
+     * адрес, почта и модель видны целиком.
+     */
+    private static function fields(array $fields): array
+    {
+        $out = [];
+        foreach ($fields as $name => $type) {
+            $v = app_secret($name);
+            $out[] = [
+                'name' => $name, 'secret' => $type === 'secret', 'source' => app_secret_source($name),
+                'value' => $type === 'secret' ? '' : $v,
+                'hint' => $type === 'secret' && $v !== '' ? '…' . mb_substr($v, -4) : '',
+            ];
+        }
+        return $out;
     }
 
     /** Может ли хоть один сервис переводить. */

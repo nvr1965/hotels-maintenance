@@ -5,6 +5,9 @@
  * GET  ?action=list                              — сервисы по порядку: настроен ли, сколько знаков ушло сегодня
  * POST ?action=save  {translators: [{id, on, daily_chars}]}   — порядок, вкл/выкл, лимиты
  * POST ?action=check {id, lang}                  — перевести пробную фразу одним сервисом
+ * POST ?action=keys  {values: {имя: значение}}   — ключи сервисов (пусто — убрать введённый, вернётся secrets.php).
+ *      Пишутся в backend/core/translator_keys.php (не в базу: её копии скачивают и смотрят в админке).
+ *      Ключи наружу не отдаются: в списке только хвост «…abcd».
  */
 require_once __DIR__ . '/../core/api.php';
 
@@ -48,6 +51,24 @@ if ($action === 'check') {
     } catch (Throwable $e) {
         api_ok(['ok' => false, 'text' => mb_strimwidth($e->getMessage(), 0, 300, '…')]);
     }
+}
+
+if ($action === 'keys') {
+    $allowed = [];
+    foreach (TranslatorChain::config()['providers'] as $p) $allowed += $p['fields'] ?? [];
+    $changes = [];
+    foreach ((array)($in['values'] ?? []) as $name => $value) {
+        if (!isset($allowed[$name])) api_fail('bad_key');
+        $value = trim((string)$value);
+        if (strlen($value) > 500 || preg_match('/[\x00-\x1f]/', $value)) api_fail('bad_value');
+        $changes[$name] = $value;
+    }
+    if (!$changes) api_ok();
+    if (!app_secrets_save($changes)) api_fail('keys_not_writable');
+    // В журнал — только что поменяли, без самих ключей
+    audit($me, 'update', 'translator_keys', implode(',', array_keys($changes)), null,
+        array_map(fn($v) => $v === '' ? 'removed' : 'set', $changes));
+    api_ok();
 }
 
 api_fail('bad_action');

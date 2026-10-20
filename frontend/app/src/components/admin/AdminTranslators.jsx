@@ -4,6 +4,7 @@ import { tr, trNs, api, errText, Message, Ic, Toggle, langName, languageList } f
 // Общая админка → Переводчики (как в общем блоке i18n-block): сервисы перевода по очереди.
 // Текст уходит первому настроенному и включённому сервису, который знает язык и не исчерпал дневной лимит;
 // упал — пробуется следующий. Порядок — стрелками, лимит 0 — без лимита, «Проверить» — пробная фраза.
+// Ключи вводятся здесь же: сервер их хранит у себя и обратно не показывает, только последние 4 знака.
 
 const API = '/backend/api/admin_translators.php';
 const PRICE_TONE = { free: ['#e7f6ec', '#1f6b3d'], free_tier: ['#e3edf8', '#2a5f96'], paid: ['#fff4e0', '#8a5a12'] };
@@ -72,7 +73,7 @@ export default function AdminTranslators({ lang }) {
                             <span className="ad-st" style={{ background: bg, color: fg }}>{t['price_' + r.price]}</span>
                             {r.ready
                                 ? <span className="ad-st green">{t.ready}</span>
-                                : <span className="ad-st grey">{t.needs} <bdi dir="ltr">{r.needs.join(', ')}</bdi></span>}
+                                : <span className="ad-st grey">{t.needs_key} <bdi dir="ltr">{r.needs.join(', ')}</bdi></span>}
                             <span style={{ marginInlineStart: 'auto', display: 'flex', gap: '4px' }}>
                                 <button type="button" className="ad-btn" aria-label={t.up} disabled={i === 0} onClick={() => move(i, -1)}><Ic n="chev" className="up" /></button>
                                 <button type="button" className="ad-btn" aria-label={t.down} disabled={i === rows.length - 1} onClick={() => move(i, 1)}><Ic n="chev" className="down" /></button>
@@ -88,6 +89,7 @@ export default function AdminTranslators({ lang }) {
                             <span className="ad-hint">{t.used_today(r.used_today.toLocaleString('en-US'))}{r.daily_chars > 0 ? ` / ${r.daily_chars.toLocaleString('en-US')}` : ''}</span>
                             <button type="button" className="ad-btn" disabled={!r.ready || c?.wait} onClick={() => check(r.id)}><Ic n="globe" />{t.check}</button>
                         </div>
+                        {r.fields.length > 0 && <KeyFields t={t} fields={r.fields} onSaved={(text) => { setMsg({ ok: true, text }); load(); }} onError={(text) => setMsg({ ok: false, text })} />}
                         {c && !c.wait && (
                             <div className={'ad-msg ' + (c.ok ? 'ok' : 'err')}>
                                 <Ic n={c.ok ? 'check' : 'warn'} /><span dir="auto">{c.text}</span>
@@ -96,7 +98,61 @@ export default function AdminTranslators({ lang }) {
                     </div>
                 );
             })}
-            <div className="ad-hint">{t.keys_hint}</div>
+            <div className="ad-hint">{t.keys_note}</div>
         </div>
+    );
+}
+
+// Ключи одного сервиса: пароль не показывается, только «задан …abcd»; пустое поле — без изменений
+function KeyFields({ t, fields, onSaved, onError }) {
+    const [drafts, setDrafts] = useState({});
+    const [busy, setBusy] = useState(false);
+    const changed = Object.keys(drafts).length > 0;
+
+    const send = async (values) => {
+        setBusy(true);
+        const d = await api(`${API}?action=keys`, { values });
+        setBusy(false);
+        if (!d.success) { onError(errText(t, d)); return; }
+        setDrafts({});
+        onSaved(t.keys_saved);
+    };
+    const saveAll = (e) => {
+        e.preventDefault();
+        // Пустое поле ключа — «не менять»; у текстовых полей пустое значение убирает настройку
+        const values = Object.fromEntries(Object.entries(drafts).filter(([k, v]) => v.trim() !== '' || !fields.find(f => f.name === k)?.secret));
+        if (Object.keys(values).length) send(values); else setDrafts({});
+    };
+
+    return (
+        <form onSubmit={saveAll} style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #efe6dd', paddingTop: '8px' }}>
+            <div className="ad-form-grid">
+                {fields.map(f => {
+                    const state = f.source === 'admin' ? t.key_admin : f.source === 'file' ? t.key_file : t.key_none;
+                    return (
+                        <label key={f.name} className="ad-lab">
+                            <span>{t['f_' + f.name] || f.name} <span style={{ fontWeight: 400 }}>· {state}{f.hint ? ` ${f.hint}` : ''}</span></span>
+                            <span style={{ display: 'flex', gap: '6px' }}>
+                                <input className="ad-fld" dir="ltr" name={f.name} autoComplete="off" spellCheck={false}
+                                    type={f.secret ? 'password' : 'text'}
+                                    placeholder={f.secret ? (f.source ? t.key_keep : t.key_paste) : (f.value ? '' : t.key_optional)}
+                                    value={drafts[f.name] ?? (f.secret ? '' : f.value)}
+                                    onChange={e => setDrafts(d => ({ ...d, [f.name]: e.target.value }))} />
+                                {f.source === 'admin' && (
+                                    <button type="button" className="ad-btn danger" disabled={busy} aria-label={t.key_remove} title={t.key_remove}
+                                        onClick={() => window.confirm(t.key_remove_confirm) && send({ [f.name]: '' })}><Ic n="trash" /></button>
+                                )}
+                            </span>
+                        </label>
+                    );
+                })}
+            </div>
+            {changed && (
+                <div className="ad-btnrow">
+                    <button type="submit" className="ad-btn green" disabled={busy}><Ic n="key" />{t.keys_save}</button>
+                    <button type="button" className="ad-btn" onClick={() => setDrafts({})}>{t.cancel}</button>
+                </div>
+            )}
+        </form>
     );
 }
