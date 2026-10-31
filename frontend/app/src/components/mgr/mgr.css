@@ -1,0 +1,82 @@
+/* Экран менеджера (новый вид). Основа — классы .wk из work.css (шапка, вкладки, плитки),
+   здесь только своё, с префиксом mgr-. Коричневого акцента нет: вместо него спокойный синий. */
+.wk.mgr { --rust: #2a5f96; --blue: #2a5f96; --blue-soft: #e3edf8; --amber: #854d0e; --amber-soft: #fef9c3; --yellow: #eab308; --beige: #d8c3ab; }
+
+.mgr-ic { display: inline-block; width: 1.1em; height: 1.1em; flex: none; vertical-align: -0.18em; }
+[dir="rtl"] .mgr-ic.flip { transform: scaleX(-1); }
+
+/* полоска «Назад», когда экран открыт из панели руководителя */
+.mgr-backbar { padding: 28px 12px 10px; }
+.mgr-secbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; border: 1px solid #d6cbc1; background: #fff; border-radius: 10px; padding: 8px 14px;
+  font-size: 15px; font-weight: 700; color: var(--ink); cursor: pointer; font-family: inherit; white-space: nowrap; }
+
+/* очередь отправки: тот же отступ, что у списка */
+.mgr-ob { padding: 0 12px; margin-top: -10px; margin-bottom: 10px; }
+
+/* форма */
+.mgr-form { padding: 0 12px 24px; }
+.mgr-card { background: var(--tile); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 3px rgba(55,31,32,.08); min-width: 0; }
+.mgr-card h3 { margin: 0; font-size: 19px; font-weight: 800; color: var(--ink); line-height: 1.25; }
+.mgr-time { font-size: 13px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -6px; }
+.mgr-time b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.mgr-lbl { font-size: 14px; font-weight: 700; color: var(--ink-soft); }
+.mgr-hint { font-size: 14px; color: var(--ink-soft); line-height: 1.4; display: flex; align-items: center; gap: 6px; }
+.mgr-desc { width: 100%; min-height: 84px; border-radius: 10px; border: 1px solid #cfc4ba; padding: 10px 12px; font-size: 17px; font-family: inherit;
+  background: #fff; color: var(--ink); resize: vertical; line-height: 1.35; }
+.mgr-desc:focus { outline: 2px solid var(--blue); outline-offset: 0; border-color: var(--blue); }
+.mgr-need { text-align: center; font-size: 14px; color: var(--ink-soft); margin-top: -4px; line-height: 1.35; }
+.mgr .wk-done.lg { min-height: 60px; }
+
+/* выбор объекта кнопками */
+.mgr-pick { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.mgr-lab { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700; color: var(--ink-soft); min-width: 0; }
+.mgr-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.mgr-chp { min-height: 44px; min-width: 48px; padding: 8px 14px; border-radius: 10px; border: 1px solid #d6cbc1; background: #fff; color: var(--ink);
+  font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; text-align: center; }
+.mgr-chp.on { background: var(--beige); border-color: var(--beige); color: var(--brown); }
+.mgr-chp:disabled { opacity: .4; cursor: default; }
+.mgr-picked { background: #faf6f2; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; border-inline-start: 4px solid var(--done); }
+.mgr-picked small { font-size: 13px; color: var(--ink-soft); }
+.mgr-place { font-size: 21px; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; color: var(--ink); }
+
+/* миниатюры в форме */
+.mgr-thumbs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.mgr-thumb { position: relative; flex: none; }
+.mgr-thumb .wk-ph { cursor: zoom-in; }
+.mgr-x { position: absolute; top: 4px; inset-inline-end: 4px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(30,18,17,.72); color: #fff;
+  font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0 0 2px; }
+.mgr-q { position: absolute; bottom: 4px; inset-inline-start: 4px; background: rgba(254,249,195,.95); color: var(--amber); border-radius: 8px; padding: 2px 4px; display: grid; place-items: center; }
+.mgr .wk-ph .play { font-size: 0; }
+.mgr .wk-ph .play .mgr-ic { width: 28px; height: 28px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.5)); }
+
+/* строка «за последние сутки» */
+.mgr-note { padding: 0 14px 10px; font-size: 14px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; }
+
+/* плитки заявок */
+.mgr-tile.s-queued { border-inline-start-color: var(--gold); }
+.mgr-tile.s-pending { border-inline-start-color: var(--yellow); }
+.mgr-tile.s-in_progress { border-inline-start-color: var(--blue); }
+.mgr-tile.s-done { border-inline-start-color: var(--done); }
+.mgr-top { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.mgr-top .wk-place { flex: 1; min-width: 0; }
+.mgr-st { flex: none; display: inline-grid; place-items: center; text-align: center; min-width: 76px; max-width: 46%; padding: 5px 10px; border-radius: 10px;
+  font-size: 13px; font-weight: 800; line-height: 1.2; background: #efe4d8; color: var(--ink-soft); white-space: normal; }
+.mgr-st.queued { background: var(--amber-soft); color: var(--amber); }
+.mgr-st.pending { background: var(--amber-soft); color: var(--amber); }
+.mgr-st.in_progress { background: var(--blue-soft); color: var(--blue); }
+.mgr-st.done { background: #dcfce7; color: var(--done); }
+.mgr-more { display: flex; flex-direction: column; gap: 10px; padding-top: 2px; cursor: default; }
+.mgr-times { display: flex; flex-direction: column; gap: 3px; font-size: 14px; color: var(--ink-soft); }
+.mgr-times b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.mgr-times .ok b { color: var(--done); }
+.mgr-cnt { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.mgr-flash { animation: mgr-flash 1.4s ease; }
+@keyframes mgr-flash { 0% { box-shadow: 0 0 0 3px var(--gold); } 100% { box-shadow: 0 1px 3px rgba(55,31,32,.08); } }
+
+@media (min-width: 860px) {
+  .mgr-form { max-width: 680px; margin: 0 auto; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .mgr-flash { animation: none; } }
+
+/* под общей полоской «Нет связи» */
+.wk.mgr .wk-hdrwrap { top: var(--mgr-off, 0px); }

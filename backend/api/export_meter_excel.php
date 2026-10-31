@@ -1,21 +1,21 @@
 <?php
 // Выгрузка счётчиков в Excel: таблица показаний по дням, расход, итоги и настоящие диаграммы Excel.
-// GET ?from=YYYY-MM-DD&to=YYYY-MM-DD&lang=ru[&key=… — ссылка для начальника без входа]
+// GET ?from=YYYY-MM-DD&to=YYYY-MM-DD&lang=xx[&key=… — ссылка для начальника без входа]
 require_once __DIR__ . '/../core/api.php';
 require_once __DIR__ . '/../core/meters.php';
 $hid = meter_require_access($db);
 require_once __DIR__ . '/../core/xlsx_chart_writer.php';
 
-$lang = $_GET['lang'] ?? 'ru';
-if (!in_array($lang, ['ru', 'en', 'he', 'ar'], true)) $lang = 'ru';
-$rtl = in_array($lang, ['he', 'ar'], true);
+// Готовые тексты на 4 языках; любой другой язык — английские в автопереводе
+$lang = api_lang();
+$rtl = ui_is_rtl($lang);
 
 $to   = app_valid_date($_GET['to'] ?? null) ?? date('Y-m-d');
 $from = app_valid_date($_GET['from'] ?? null) ?? date('Y-m-d', strtotime("$to -29 days"));
 if ($from > $to) [$from, $to] = [$to, $from];
 if (strtotime($to) - strtotime($from) > 731 * 86400) $from = date('Y-m-d', strtotime("$to -730 days"));
 
-$T = [
+$T = ui_dict([
     'ru' => ['reading' => 'Показание', 'months' => 'По месяцам', 'month_names' => ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'], 'skipped' => 'не в таблице и графиках', 'data' => 'Показания', 'charts' => 'Графики', 'summary' => 'Итоги', 'title' => 'Счётчики: показания и расход',
              'period' => 'Период', 'date' => 'Дата', 'per_day' => 'расход в сутки', 'change' => 'изменение',
              'meter' => 'Счётчик', 'unit' => 'Ед.', 'count' => 'Показаний', 'first' => 'Первое', 'last' => 'Последнее',
@@ -44,7 +44,7 @@ $T = [
              'refills' => 'التعبئات', 'anom' => 'مشكوك فيها', 'cons_chart' => 'الاستهلاك اليومي',
              'note' => 'القراءة = آخر قراءة في اليوم (كل القراءات مع الوقت في ورقة «كل القراءات»). الاستهلاك اليومي = فرق القراءات موزعًا على الأيام بينها. الفرق السالب (خطأ في التعرف) لا يُحتسب.', 'all' => 'كل القراءات', 'time' => 'الوقت',
              'none' => 'لا توجد عدادات.'],
-][$lang];
+], $lang);
 
 $report = meter_report($db, meter_tasks($db, $hid, $lang), $from, $to);
 $meters = $report['meters'];

@@ -40,8 +40,8 @@ function users_can_edit_account(array $me, int $uid): bool
 /** Останется ли у отеля хоть один администратор (свой или администратор сети). */
 function users_admins_left(array $me, int $hid, int $exceptId): int
 {
-    return (int)db_value("SELECT COUNT(*) FROM hotel_members m JOIN users u ON u.id = m.user_id AND u.active = 1
-                          WHERE m.hotel_id = ? AND m.is_admin = 1 AND m.active = 1 AND m.user_id <> ?", [$hid, $exceptId])
+    return (int)db_value("SELECT COUNT(*) FROM hotel_members m JOIN users u ON u.id = m.user_id AND u.active
+                          WHERE m.hotel_id = ? AND m.is_admin AND m.active AND m.user_id <> ?", [$hid, $exceptId])
          + (int)db_value("SELECT COUNT(*) FROM org_members WHERE org_id = ? AND role = 'org_admin' AND user_id <> ?",
                           [(int)$me['hotel']['org_id'], $exceptId]);
 }
@@ -91,11 +91,10 @@ if ($action === 'save') {
         // Логин = имя, как в Ramada; он один на всю систему
         if (db_one("SELECT id FROM users WHERE LOWER(login) = LOWER(?)", [$name])) admin_fail('name_taken');
         if ($password === '') admin_fail('password_required');
-        db_exec("INSERT INTO users (login, display_name, password_hash, lang, last_hotel_id) VALUES (?, ?, ?, ?, ?)",
+        $newId = (int)db_value("INSERT INTO users (login, display_name, password_hash, lang, last_hotel_id) VALUES (?, ?, ?, ?, ?) RETURNING id",
             [$name, $name, password_hash($password, PASSWORD_DEFAULT), $me['hotel']['default_lang'], $hid]);
-        $newId = db_insert_id();
         db_exec("INSERT INTO hotel_members (hotel_id, user_id, role, is_admin, active) VALUES (?, ?, ?, ?, ?)",
-            [$hid, $newId, $role, $isAdmin, $active]);
+            [$hid, $newId, $role, (bool)$isAdmin, (bool)$active]);
         admin_audit($me, 'insert', 'hotel_members', ['user_id' => $newId], null, users_member($hid, $newId));
         admin_ok(['id' => $newId]);
     }
@@ -108,7 +107,7 @@ if ($action === 'save') {
     if ((!$isAdmin || !$active) && (int)$before['is_admin'] === 1 && users_admins_left($me, $hid, $id) === 0) admin_fail('last_admin');
 
     db_exec("UPDATE hotel_members SET role = ?, is_admin = ?, active = ? WHERE hotel_id = ? AND user_id = ?",
-        [$role, $isAdmin, $active, $hid, $id]);
+        [$role, (bool)$isAdmin, (bool)$active, $hid, $id]);
 
     // Имя (оно же логин) и пароль — общие на все отели
     $accountChanged = $name !== $before['display_name'] || $password !== '';
@@ -155,7 +154,7 @@ if ($action === 'delete') {
     $left = (int)db_value("SELECT COUNT(*) FROM hotel_members WHERE user_id = ?", [$id])
           + (int)db_value("SELECT COUNT(*) FROM org_members WHERE user_id = ?", [$id]);
     if ($left === 0 && (int)$before['is_superadmin'] !== 1) {
-        db_exec("UPDATE users SET active = 0 WHERE id = ?", [$id]);
+        db_exec("UPDATE users SET active = false WHERE id = ?", [$id]);
         app_forget_user_tokens($id);
     }
     admin_audit($me, 'delete', 'hotel_members', ['user_id' => $id], $before, null);

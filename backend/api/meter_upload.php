@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_contains($_SERVER['CONTENT_TYPE
     $action = $input['action'] ?? $action;
 }
 
-$meters = meter_tasks($db, $hid, $me['lang'] ?? 'ru');
+$meters = meter_tasks($db, $hid, $me['lang'] ?? 'en');
 
 if ($action === 'init') {
     out(['success' => true, 'meters' => array_values($meters), 'today' => date('Y-m-d')]);
@@ -103,19 +103,9 @@ if ($action === 'save') {
     $rows = $input['rows'] ?? [];
     if (!is_array($rows) || !$rows) out(['success' => false, 'message' => 'Нечего записывать']);
 
-
-    $sel = $db->prepare("SELECT id, media, notes FROM routine_schedule WHERE task_id = ? AND target_date = ? LIMIT 1");
-    $upd = $db->prepare("UPDATE routine_schedule SET status = 'done', media = ?, notes = ? WHERE id = ?");
-    $ins = $db->prepare("INSERT INTO routine_schedule (hotel_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw)
-                         VALUES ($hid, ?, ?, ?, 'done', ?, ?, ?, ?, ?)");
-    $log = $db->prepare("INSERT INTO routine_log (hotel_id, schedule_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw, is_repeat, closed_at)
-                         VALUES ($hid, ?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?)");
-    if (!$sel || !$upd || !$ins || !$log) out(['success' => false, 'message' => 'Ошибка базы: ' . $db->error]);
-
     $saved = 0;
     $errors = [];
     $workerId = (int)$me['id'];
-    $db->begin_transaction();
     foreach ($rows as $row) {
         $taskId = (int)($row['task_id'] ?? 0);
         $date   = app_valid_date($row['date'] ?? null);
@@ -135,41 +125,39 @@ if ($action === 'save') {
              . ($url ? "; фото $url" : '');
         $photo = $url ? [['url' => $url, 'type' => 'photo']] : [];
 
-        // Строка регламента на день (одна в сутки): фото добавляем к имеющимся, значение потом = последнее за день
-        $sel->bind_param('is', $taskId, $date);
-        $sel->execute();
-        $existing = $sel->get_result()->fetch_assoc();
-        if ($existing) {
-            $sid = (int)$existing['id'];
-            $media = json_decode((string)$existing['media'], true);
-            if (!is_array($media)) $media = [];
-            $mediaJson = json_encode(array_merge($media, $photo), JSON_UNESCAPED_SLASHES);
-            $notes = (string)($existing['notes'] ?? '');
-            if (!str_contains($notes, METER_MARK)) $notes = trim($notes . ' ' . METER_MARK);
-            $upd->bind_param('ssi', $mediaJson, $notes, $sid);
-            $ok = $upd->execute();
-            $repeat = 1;
-            meter_materialize_day($db, $taskId, $date);
-        } else {
-            $mediaJson = json_encode($photo, JSON_UNESCAPED_SLASHES);
-            $notes = METER_MARK;
-            $ins->bind_param('iissssss', $taskId, $workerId, $date, $notes, $mediaJson, $value, $unit, $raw);
-            $ok = $ins->execute();
-            $sid = (int)$db->insert_id;
-            $repeat = 0;
+        try {
+            db_tx(function () use ($db, $hid, $taskId, $date, $time, $value, $unit, $raw, $photo, $workerId) {
+                // Строка регламента на день (одна в сутки): фото добавляем к имеющимся, значение потом = последнее за день
+                $existing = db_one("SELECT id, media, notes FROM routine_schedule WHERE task_id = ? AND target_date = ?", [$taskId, $date]);
+                if ($existing) {
+                    $sid = (int)$existing['id'];
+                    $media = json_decode((string)$existing['media'], true);
+                    $notes = (string)($existing['notes'] ?? '');
+                    if (!str_contains($notes, METER_MARK)) $notes = trim($notes . ' ' . METER_MARK);
+                    db_exec("UPDATE routine_schedule SET status = 'done', media = ?, notes = ? WHERE id = ?",
+                        [json_encode(array_merge(is_array($media) ? $media : [], $photo), JSON_UNESCAPED_SLASHES), $notes, $sid]);
+                    $repeat = true;
+                    meter_materialize_day($db, $taskId, $date);
+                } else {
+                    $sid = (int)db_value("INSERT INTO routine_schedule (hotel_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw)
+                                          VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?) RETURNING id",
+                        [$hid, $taskId, $workerId, $date, METER_MARK, json_encode($photo, JSON_UNESCAPED_SLASHES), $value, $unit, $raw]);
+                    $repeat = false;
+                }
+                // Каждое показание — отдельная запись в истории со своим временем (несколько в сутки)
+                db_exec("INSERT INTO routine_log (hotel_id, schedule_id, task_id, worker_id, target_date, status, notes, media,
+                                                  ocr_value, ocr_unit, ocr_raw, is_repeat, closed_at)
+                         VALUES (?, ?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?)",
+                    [$hid, $sid, $taskId, $workerId, $date, METER_MARK, json_encode($photo, JSON_UNESCAPED_SLASHES),
+                     $value, $unit, $raw, $repeat, "$date $time:00"]);
+                meter_sync_day($db, $taskId, $date, $unit, $workerId, METER_MARK);
+            });
+            $saved++;
+        } catch (PDOException $e) {
+            error_log('hotels: meter_upload save: ' . $e->getMessage());
+            $errors[] = "$name: ошибка базы";
         }
-        if (!$ok) { $errors[] = "$name: " . $db->error; continue; }
-
-        // Каждое показание — отдельная запись в истории со своим временем (несколько в сутки)
-        $closedAt = "$date $time:00";
-        $photoJson = json_encode($photo, JSON_UNESCAPED_SLASHES);
-        $logNotes = METER_MARK;
-        $log->bind_param('iiissssssis', $sid, $taskId, $workerId, $date, $logNotes, $photoJson, $value, $unit, $raw, $repeat, $closedAt);
-        if (!$log->execute()) { $errors[] = "$name: " . $log->error; continue; }
-        meter_sync_day($db, $taskId, $date, $unit, $workerId, METER_MARK);
-        $saved++;
     }
-    $db->commit();
     out(['success' => $saved > 0, 'saved' => $saved, 'errors' => $errors]);
 }
 
@@ -199,22 +187,23 @@ if ($action === 'edit' || $action === 'clear') {
     $stamp = date('d.m.Y H:i');
     $fmt = fn($d) => date('d.m.Y', strtotime($d));
     $workerId = (int)$me['id'];
-    $fail = function (string $err) use ($db) { $db->rollback(); out(['success' => false, 'message' => 'Ошибка базы: ' . $err]); };
-    $db->begin_transaction();
+
+    // Ответ (out) выходит из скрипта, поэтому транзакцию ведём вручную: откат при любом выходе без commit
+    $db->beginTransaction();
+    register_shutdown_function(function () use ($db) { if ($db->inTransaction()) $db->rollBack(); });
+    $done = function (array $data) use ($db) { $db->commit(); out($data); };
 
     // Старое показание только в регламенте — сначала переносим его в историю, дальше правим как обычное
     if ($kind === 's') {
-        $res = $db->query("SELECT task_id, target_date FROM routine_schedule WHERE id = $id");
-        $srow = $res ? $res->fetch_assoc() : null;
-        if (!$srow || !isset($meters[(int)$srow['task_id']])) { $db->rollback(); out(['success' => false, 'message' => 'Запись не найдена']); }
+        $srow = db_one("SELECT task_id, target_date::text AS target_date FROM routine_schedule WHERE id = ? AND hotel_id = ?", [$id, $hid]);
+        if (!$srow || !isset($meters[(int)$srow['task_id']])) out(['success' => false, 'message' => 'Запись не найдена']);
         $newId = meter_materialize_day($db, (int)$srow['task_id'], $srow['target_date']);
-        if (!$newId) { $db->rollback(); out(['success' => false, 'message' => 'Запись уже изменилась, обновите страницу']); }
+        if (!$newId) out(['success' => false, 'message' => 'Запись уже изменилась, обновите страницу']);
         $id = $newId;
     }
 
-    $res = $db->query("SELECT id, task_id, target_date, closed_at, ocr_value, notes FROM routine_log WHERE id = $id");
-    $row = $res ? $res->fetch_assoc() : null;
-    if (!$row || !isset($meters[(int)$row['task_id']])) { $db->rollback(); out(['success' => false, 'message' => 'Запись не найдена']); }
+    $row = db_one("SELECT id, task_id, target_date::text AS target_date, closed_at, ocr_value, notes FROM routine_log WHERE id = ? AND hotel_id = ?", [$id, $hid]);
+    if (!$row || !isset($meters[(int)$row['task_id']])) out(['success' => false, 'message' => 'Запись не найдена']);
     $taskId = (int)$row['task_id'];
     $unit = $meters[$taskId]['unit'];
     $old = $row['ocr_value'];
@@ -223,42 +212,34 @@ if ($action === 'edit' || $action === 'clear') {
 
     if ($action === 'clear') {
         $notes = trim(($row['notes'] ?? '') . " [$stamp удалено показание " . ($old ?? '—') . ']');
-        $st = $db->prepare("UPDATE routine_log SET ocr_value = NULL, notes = ? WHERE id = ?");
-        $st->bind_param('si', $notes, $id);
-        if (!$st->execute()) $fail($st->error);
+        db_exec("UPDATE routine_log SET ocr_value = NULL, notes = ? WHERE id = ?", [$notes, $id]);
         meter_sync_day($db, $taskId, $oldDate, $unit, $workerId, METER_MARK);
-        $db->commit();
-        out(['success' => true]);
+        $done(['success' => true]);
     }
 
     $num = meter_number($input['value'] ?? null);
     $date = app_valid_date($input['date'] ?? null);
     $time = preg_match('/^\d{2}:\d{2}$/', (string)($input['time'] ?? '')) ? $input['time'] : $oldTime;
-    if ($num === null) { $db->rollback(); out(['success' => false, 'message' => 'Показание должно быть числом']); }
-    if (!$date) { $db->rollback(); out(['success' => false, 'message' => 'Неверная дата']); }
-    if ($date > date('Y-m-d')) { $db->rollback(); out(['success' => false, 'message' => 'Дата в будущем']); }
+    if ($num === null) out(['success' => false, 'message' => 'Показание должно быть числом']);
+    if (!$date) out(['success' => false, 'message' => 'Неверная дата']);
+    if ($date > date('Y-m-d')) out(['success' => false, 'message' => 'Дата в будущем']);
     $value = rtrim(rtrim(number_format($num, 3, '.', ''), '0'), '.');
-    if ($value === (string)$old && $date === $oldDate && $time === $oldTime) { $db->commit(); out(['success' => true, 'unchanged' => true]); }
+    if ($value === (string)$old && $date === $oldDate && $time === $oldTime) $done(['success' => true, 'unchanged' => true]);
 
     $was = ($old ?? '—') . ' от ' . $fmt($oldDate) . " $oldTime";
     $notes = trim(($row['notes'] ?? '') . " [$stamp правка: было $was, стало $value от " . $fmt($date) . " $time]");
-    $closedAt = "$date $time:00";
-    $res = $db->query("SELECT id FROM routine_schedule WHERE task_id = $taskId AND target_date = '" . $db->real_escape_string($date) . "' LIMIT 1");
-    $schedId = $res ? ($res->fetch_assoc()['id'] ?? null) : null;
-    $st = $db->prepare("UPDATE routine_log SET ocr_value = ?, ocr_unit = ?, target_date = ?, closed_at = ?, notes = ?, schedule_id = ? WHERE id = ?");
-    $st->bind_param('sssssii', $value, $unit, $date, $closedAt, $notes, $schedId, $id);
-    if (!$st->execute()) $fail($st->error);
+    $schedId = db_value("SELECT id FROM routine_schedule WHERE task_id = ? AND target_date = ?", [$taskId, $date]);
+    db_exec("UPDATE routine_log SET ocr_value = ?, ocr_unit = ?, target_date = ?, closed_at = ?, notes = ?, schedule_id = ? WHERE id = ?",
+        [$value, $unit, $date, "$date $time:00", $notes, $schedId, $id]);
     // Старые повторные записи того же показания на ту же минуту больше не нужны — иначе они «всплывут» на старом времени
     if ($date !== $oldDate || $time !== $oldTime) {
-        $st = $db->prepare("UPDATE routine_log SET ocr_value = NULL, notes = CONCAT(IFNULL(notes, ''), ' [повтор записи, заменён]')
-                            WHERE task_id = ? AND id < ? AND closed_at = ? AND target_date = ? AND ocr_value IS NOT NULL");
-        $st->bind_param('iiss', $taskId, $id, $row['closed_at'], $oldDate);
-        if (!$st->execute()) $fail($st->error);
+        db_exec("UPDATE routine_log SET ocr_value = NULL, notes = COALESCE(notes, '') || ' [повтор записи, заменён]'
+                 WHERE task_id = ? AND id < ? AND closed_at = ?::timestamp AND target_date = ? AND ocr_value IS NOT NULL",
+            [$taskId, $id, $row['closed_at'], $oldDate]);
     }
     meter_sync_day($db, $taskId, $date, $unit, $workerId, METER_MARK);
     if ($date !== $oldDate) meter_sync_day($db, $taskId, $oldDate, $unit, $workerId, METER_MARK);
-    $db->commit();
-    out(['success' => true]);
+    $done(['success' => true]);
 }
 
 out(['success' => false, 'message' => 'Неизвестное действие']);

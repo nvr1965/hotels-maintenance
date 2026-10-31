@@ -1,6 +1,6 @@
 // Логотип текущего отеля (настройки отеля: logo_url, название, подпись, цвета).
 // BrandEmblem — только знак (картинка логотипа или круг с первой буквой), BrandLogo — знак + название.
-import { useHotel } from '../brand';
+import { useHotel, SYSTEM_NAME } from '../brand';
 
 // Цвета по умолчанию, пока настройки отеля не пришли; на экранах используются CSS-переменные --brand-*
 export const BRAND = {
@@ -33,7 +33,7 @@ export function BrandEmblem({ size = 40, light = false, style }) {
 // color — цвет надписи: светлый на тёмном фоне, тёмный на светлом
 export function BrandLogo({ size = 56, color = BRAND.cream, style }) {
     const hotel = useHotel();
-    const name = hotel?.name || '';
+    const name = hotel ? hotel.name || '' : SYSTEM_NAME;
     const sub = hotel?.brand?.subtitle;
     // «Ramada Olivié Nazareth» + подпись «OLIVIÉ NAZARETH» → крупно «RAMADA», подпись ниже
     const main = sub && name.toUpperCase().endsWith(sub.toUpperCase()) ? name.slice(0, name.length - sub.length).trim() : name;

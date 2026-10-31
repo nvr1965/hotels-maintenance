@@ -18,12 +18,12 @@ function meter_link_url(string $key, string $lang): string
 }
 
 
-function meter_link_list(mysqli $db): array
+function meter_link_list(): array
 {
-    $out = [];
     global $hid;
-    $res = $db->query("SELECT id, link_key, label, lang, created_at, last_used_at FROM meter_report_links WHERE hotel_id = $hid AND revoked = 0 ORDER BY id DESC");
-    while ($res && $r = $res->fetch_assoc()) {
+    $out = [];
+    foreach (db_all("SELECT id, link_key, label, lang, created_at, last_used_at FROM meter_report_links
+                     WHERE hotel_id = ? AND NOT revoked ORDER BY id DESC", [$hid]) as $r) {
         $out[] = ['id' => (int)$r['id'], 'label' => $r['label'], 'lang' => $r['lang'], 'created_at' => $r['created_at'],
                   'last_used_at' => $r['last_used_at'], 'url' => meter_link_url($r['link_key'], $r['lang'])];
     }
@@ -31,23 +31,19 @@ function meter_link_list(mysqli $db): array
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $in = json_decode(file_get_contents('php://input'), true) ?: [];
+    $in = api_input();
     $action = $in['action'] ?? '';
     if ($action === 'create') {
-        $key = bin2hex(random_bytes(16));
         $label = mb_substr(trim((string)($in['label'] ?? '')), 0, 100);
-        $lang = app_normalize_lang($in['lang'] ?? 'he');
-        if (!isset($in['lang'])) $lang = 'he';
-        $st = $db->prepare("INSERT INTO meter_report_links (hotel_id, link_key, label, lang, created_by) VALUES (?, ?, ?, ?, ?)");
-        $uid = (int)$me['id'];
-        $st->bind_param('isssi', $hid, $key, $label, $lang, $uid);
-        if (!$st->execute()) app_json_fail(500, 'db_error');
+        // Язык отчёта: заданный, иначе основной язык отеля
+        $lang = app_normalize_lang($in['lang'] ?? $me['hotel']['default_lang']);
+        db_exec("INSERT INTO meter_report_links (hotel_id, link_key, label, lang, created_by) VALUES (?, ?, ?, ?, ?)",
+            [$hid, bin2hex(random_bytes(16)), $label, $lang, $me['id']]);
     } elseif ($action === 'revoke') {
-        $id = (int)($in['id'] ?? 0);
-        $db->query("UPDATE meter_report_links SET revoked = 1 WHERE id = $id AND hotel_id = $hid");
+        db_exec("UPDATE meter_report_links SET revoked = true WHERE id = ? AND hotel_id = ?", [(int)($in['id'] ?? 0), $hid]);
     } else {
         app_json_fail(400, 'bad_action');
     }
 }
 
-echo json_encode(['success' => true, 'links' => meter_link_list($db)], JSON_UNESCAPED_UNICODE);
+api_ok(['links' => meter_link_list()]);

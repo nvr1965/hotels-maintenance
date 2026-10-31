@@ -5,26 +5,25 @@ $hid = $me['hotel_id'];
 require_once __DIR__ . '/../core/xlsx_writer.php';
 
 
-$lang = $_GET['lang'] ?? 'ru';
-if (!in_array($lang, ['ru', 'en', 'he', 'ar'], true)) $lang = 'ru';
-$rtl = in_array($lang, ['he', 'ar'], true);
-$nameCol = 'name_' . $lang;
+// Готовые тексты на 4 языках; любой другой язык — английские в автопереводе
+$lang = api_lang($me);
+$rtl = ui_is_rtl($lang);
 
 // ---- Переводы для шапки/статусов таблицы ----
-$T = [
+$T = ui_dict([
     'ru' => ['sheet' => 'Регламент', 'log_sheet' => 'Журнал', 'date' => 'Дата', 'time' => 'Время', 'worker' => 'Исполнитель', 'value' => 'Показание', 'notes' => 'Примечание', 'photos' => 'Фото', 'repeat' => 'Повтор', 'wait' => 'ждёт администратора',  'num' => '№', 'name' => 'Название', 'counter' => 'Счётчик?', 'yes' => 'Да',
               'pending' => 'Не проверено', 'done' => 'Выполнено', 'chart_title' => 'График показаний',
               'no_gd' => 'Графики недоступны: в PHP на сервере не включено расширение GD (php.ini -> extension=gd -> перезапустить Apache)'],
     'en' => ['sheet' => 'Routine', 'log_sheet' => 'Log', 'date' => 'Date', 'time' => 'Time', 'worker' => 'Done by', 'value' => 'Reading', 'notes' => 'Notes', 'photos' => 'Photos', 'repeat' => 'Repeat', 'wait' => 'waiting for admin',  'num' => '#', 'name' => 'Name', 'counter' => 'Counter?', 'yes' => 'Yes',
               'pending' => 'Not checked', 'done' => 'Done', 'chart_title' => 'Reading history',
-              'no_gd' => 'Charts unavailable: PHP GD extension is not enabled on the server (php.ini -> extension=gd -> restart Apache)'],
+              'no_gd' => 'Charts unavailable: PHP GD extension is not enabled on the server (php.ini -> extension=gd -> restart the web server)'],
     'he' => ['sheet' => 'שגרה', 'log_sheet' => 'יומן', 'date' => 'תאריך', 'time' => 'שעה', 'worker' => 'בוצע על ידי', 'value' => 'קריאה', 'notes' => 'הערה', 'photos' => 'תמונות', 'repeat' => 'חזרה', 'wait' => 'ממתין למנהל',  'num' => '#', 'name' => 'שם', 'counter' => 'מונה?', 'yes' => 'כן',
               'pending' => 'לא נבדק', 'done' => 'בוצע', 'chart_title' => 'היסטוריית קריאות',
               'no_gd' => 'גרפים אינם זמינים: הרחבת GD של PHP אינה מופעלת בשרת (php.ini -> extension=gd -> הפעל מחדש את Apache)'],
     'ar' => ['sheet' => 'دوري', 'log_sheet' => 'السجل', 'date' => 'التاريخ', 'time' => 'الوقت', 'worker' => 'نفّذها', 'value' => 'القراءة', 'notes' => 'ملاحظة', 'photos' => 'صور', 'repeat' => 'تكرار', 'wait' => 'بانتظار المسؤول',  'num' => '#', 'name' => 'الاسم', 'counter' => 'عداد؟', 'yes' => 'نعم',
               'pending' => 'لم يُفحص', 'done' => 'منجز', 'chart_title' => 'سجل القراءات',
               'no_gd' => 'الرسوم البيانية غير متاحة: امتداد GD في PHP غير مفعّل على الخادم (php.ini -> extension=gd -> أعد تشغيل Apache)'],
-][$lang];
+], $lang);
 
 // Период таблицы — N последних дней (по умолчанию 30, максимум 92)
 $days = isset($_GET['days']) ? max(3, min(92, (int)$_GET['days'])) : 30;
@@ -38,28 +37,18 @@ if ($isDate($_GET['from'] ?? null)) {
 } else {
     $from = date('Y-m-d', strtotime($to . " -" . ($days - 1) . " days"));
 }
-$toEsc = $db->real_escape_string($to);
-$fromEsc = $db->real_escape_string($from);
-
 // ---- Задачи на языке пользователя ----
 $tasks = [];
-$res = $db->query("SELECT id, COALESCE(NULLIF($nameCol, ''), name_ru) AS name, requires_ocr, ocr_type
-                    FROM routine_tasks WHERE hotel_id = $hid ORDER BY sort_order ASC, id ASC");
-if ($res) {
-    while ($r = $res->fetch_assoc()) {
-        $tasks[(int)$r['id']] = $r;
-    }
+foreach (db_all("SELECT id, names, requires_ocr, ocr_type FROM routine_tasks WHERE hotel_id = ? ORDER BY sort_order, id", [$hid]) as $r) {
+    $r['name'] = i18n_pick($r['names'], $lang);
+    $tasks[(int)$r['id']] = $r;
 }
 
 // ---- Отметки/показания за период таблицы ----
-$res = $db->query("SELECT task_id, target_date, status, ocr_value, ocr_unit
-                    FROM routine_schedule
-                    WHERE hotel_id = $hid AND target_date BETWEEN '$fromEsc' AND '$toEsc'");
 $byTaskDate = [];
-if ($res) {
-    while ($r = $res->fetch_assoc()) {
-        $byTaskDate[(int)$r['task_id']][$r['target_date']] = $r;
-    }
+foreach (db_all("SELECT task_id, target_date::text AS target_date, status, ocr_value, ocr_unit
+                 FROM routine_schedule WHERE hotel_id = ? AND target_date BETWEEN ? AND ?", [$hid, $from, $to]) as $r) {
+    $byTaskDate[(int)$r['task_id']][$r['target_date']] = $r;
 }
 
 $dates = [];
@@ -194,7 +183,6 @@ foreach ($tasks as $tid => $t) {
 
 // ---- Графики по каждому счётчику — отдельно от таблицы, более широкая ретроспектива (90 дней) ----
 $chartFrom = min($from, date('Y-m-d', strtotime($to . ' -90 days')));
-$chartFromEsc = $db->real_escape_string($chartFrom);
 
 if (!function_exists('imagecreatetruecolor')) {
     $sheet->addRow([]);
@@ -205,14 +193,10 @@ $nextImageRow = count($tasks) + 3; // отступ после таблицы
 foreach ($tasks as $tid => $t) {
     if (empty($t['requires_ocr'])) continue;
 
-    $res = $db->query("SELECT target_date, ocr_value FROM routine_schedule
-                        WHERE task_id = $tid AND target_date BETWEEN '$chartFromEsc' AND '$toEsc'
-                        ORDER BY target_date ASC");
     $points = [];
-    if ($res) {
-        while ($r = $res->fetch_assoc()) {
-            $points[] = ['date' => $r['target_date'], 'value' => $r['ocr_value'] !== null ? (float)$r['ocr_value'] : null];
-        }
+    foreach (db_all("SELECT target_date::text AS target_date, ocr_value FROM routine_schedule
+                     WHERE task_id = ? AND target_date BETWEEN ? AND ? ORDER BY target_date", [$tid, $chartFrom, $to]) as $r) {
+        $points[] = ['date' => $r['target_date'], 'value' => $r['ocr_value'] !== null ? (float)$r['ocr_value'] : null];
     }
 
     $unit = '';
@@ -229,11 +213,12 @@ foreach ($tasks as $tid => $t) {
 {
     $logSheet = $wb->addSheet($T['log_sheet'], [12, 8, 30, 18, 14, 40, 7, 8], $rtl);
     $logSheet->addRow([$T['date'], $T['time'], $T['name'], $T['worker'], $T['value'], $T['notes'], $T['photos'], $T['repeat']], true);
-    $res = $db->query("SELECT l.task_id, l.target_date, l.closed_at, l.notes, l.media, l.ocr_value, l.ocr_unit, l.ocr_raw, l.is_repeat, w.display_name AS worker
-                        FROM routine_log l LEFT JOIN users w ON w.id = l.worker_id
-                        WHERE l.hotel_id = $hid AND l.target_date BETWEEN '$fromEsc' AND '$toEsc' AND l.status = 'done'
-                        ORDER BY l.target_date ASC, l.closed_at ASC, l.id ASC");
-    while ($res && ($r = $res->fetch_assoc())) {
+    $log = db_all("SELECT l.task_id, l.target_date::text AS target_date, l.closed_at, l.notes, l.notes_lang, l.media,
+                          l.ocr_value, l.ocr_unit, l.ocr_raw, l.is_repeat, w.display_name AS worker
+                   FROM routine_log l LEFT JOIN users w ON w.id = l.worker_id
+                   WHERE l.hotel_id = ? AND l.target_date BETWEEN ? AND ? AND l.status = 'done'
+                   ORDER BY l.target_date, l.closed_at, l.id", [$hid, $from, $to]);
+    foreach (i18n_free_rows($log, 'notes', 'notes_lang', $lang) as $r) {
         $media = json_decode($r['media'] ?? '[]', true);
         $value = ($r['ocr_value'] !== null && $r['ocr_value'] !== '') ? trim($r['ocr_value'] . ' ' . ($r['ocr_unit'] ?? ''))
                : ($r['ocr_raw'] === '[pending]' ? $T['wait'] : '');

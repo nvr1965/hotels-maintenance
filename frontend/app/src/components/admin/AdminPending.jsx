@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { tr, api, errText, S, Message, Pills } from './adminUi';
+import { tr, api, errText, Message, Pills, Ic, isWide } from './adminUi';
+import { PhotoViewer } from '../work/WorkTiles';
 
-// Админка → «🔎 Нераспознанные»: фото счётчиков, снятые исполнителями без распознавания.
+// Админка → «Нераспознанные»: фото счётчиков, снятые исполнителями без распознавания.
 // Распознавание — по одному фото за раз (общая очередь), лимит Gemini в минуту пережидаем сами.
 const API = '/backend/api/meter_pending.php';
 
@@ -22,6 +23,9 @@ export default function AdminPending({ lang, onCount }) {
     const queue = useRef(Promise.resolve());
     const stopRef = useRef(false);
     const timers = useRef({});
+    const [open, setOpen] = useState(() => new Set());   // раскрытые плитки (на компьютере раскрыты все, на телефоне первая)
+    const [viewer, setViewer] = useState(null);
+    const wide = isWide();
 
     const patch = (id, upd) => setSt(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...upd } }));
 
@@ -131,97 +135,112 @@ export default function AdminPending({ lang, onCount }) {
         drop(row.id);
     };
 
-    if (rows === null) return <div style={{ textAlign: 'center', padding: '40px', color: '#6e635b' }}>{t.loading}</div>;
+    if (rows === null) return <div className="ad-empty">{t.loading}</div>;
 
     const meters = [...new Map(rows.map(r => [r.task_id, r.meter])).entries()];
     const visible = filter === 'all' ? rows : rows.filter(r => String(r.task_id) === filter);
     const filled = visible.filter(r => toNum(st[r.id]?.value) !== null).length;
+    const flip = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'start' }}>
-            <div style={S.hint}>{t.pend_hint}</div>
-            <Message msg={msg} />
+        <>
+            <div className="ad-pad ad-hint">{t.pend_hint}</div>
+            <div className="ad-list">
+                <Message msg={msg} />
 
-            {rows.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#1f6b3d', fontSize: '18px', fontWeight: 'bold' }}>{t.pend_empty}</div>
-            ) : (
-                <>
-                    {meters.length > 1 && (
-                        <Pills value={filter} onChange={setFilter}
-                            items={[['all', `${t.pend_all_meters} (${rows.length})`], ...meters.map(([id, name]) => [String(id), `${name} (${rows.filter(r => r.task_id === id).length})`])]} />
-                    )}
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {running
-                            ? <button type="button" style={S.btn} onClick={stopAll}>{t.pend_stop}</button>
-                            : <button type="button" style={S.primary} onClick={recognizeAll}>{t.pend_ocr_all}</button>}
-                        <button type="button" style={{ ...S.primary, background: '#26875a', opacity: filled ? 1 : 0.5 }} disabled={!filled} onClick={saveAll}>{t.pend_save_all(filled)}</button>
-                        <button type="button" style={S.btn} onClick={() => { setMsg(null); load(); }}>⟳ {t.refresh}</button>
-                    </div>
+                {rows.length === 0 ? (
+                    <div className="ad-empty ok"><Ic n="check" />{t.pend_empty}</div>
+                ) : (
+                    <>
+                        {meters.length > 1 && (
+                            <Pills value={filter} onChange={setFilter}
+                                items={[['all', t.pend_all_meters, rows.length], ...meters.map(([id, name]) => [String(id), name, rows.filter(r => r.task_id === id).length])]} />
+                        )}
+                        <div className="ad-btnrow">
+                            {running
+                                ? <button type="button" className="ad-btn danger" onClick={stopAll}><Ic n="stop" />{t.pend_stop}</button>
+                                : <button type="button" className="ad-btn blue" onClick={recognizeAll}><Ic n="ai" />{t.pend_ocr_all}</button>}
+                            <button type="button" className="ad-btn green" disabled={!filled} onClick={saveAll}><Ic n="save" />{t.pend_save_all(filled)}</button>
+                            <button type="button" className="ad-btn" onClick={() => { setMsg(null); load(); }}><Ic n="refresh" />{t.refresh}</button>
+                        </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '12px' }}>
-                        {visible.map(row => {
-                            const s = st[row.id] || {};
-                            const photo = s.photo || row.photos[row.photos.length - 1];
-                            const num = toNum(s.value);
-                            const less = row.kind === 'counter' && num !== null && row.prev && num < row.prev.value;
-                            const busy = ['queued', 'ocr', 'wait'].includes(s.status);
-                            return (
-                                <div key={row.id} style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0, textAlign: 'start' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-                                        <b style={{ fontSize: '17px', color: '#2b2320' }}>📟 {row.meter}</b>
-                                        <span style={{ color: '#5a4f48', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{fmtDate(row.date)} {row.time}</span>
-                                    </div>
-                                    {photo ? (
-                                        <div style={{ position: 'relative', background: '#2b2320', borderRadius: '10px', overflow: 'hidden', height: '230px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <a href={photo} target="_blank" rel="noreferrer" style={{ display: 'contents' }}>
-                                                <img src={photo} alt="" style={{ maxWidth: s.rot % 180 ? '230px' : '100%', maxHeight: s.rot % 180 ? '100%' : '230px', objectFit: 'contain', transform: `rotate(${s.rot || 0}deg)`, transition: 'transform .2s' }} />
-                                            </a>
-                                            <button type="button" onClick={() => patch(row.id, { rot: ((s.rot || 0) + 90) % 360 })}
-                                                style={{ position: 'absolute', insetInlineEnd: '8px', bottom: '8px', ...S.btn, minHeight: '34px', padding: '4px 10px', fontSize: '14px', opacity: 0.92 }}>{t.pend_rotate}</button>
+                        <div className="ad-grid wide">
+                            {visible.map((row, idx) => {
+                                const s = st[row.id] || {};
+                                const photo = s.photo || row.photos[row.photos.length - 1];
+                                const num = toNum(s.value);
+                                const less = row.kind === 'counter' && num !== null && row.prev && num < row.prev.value;
+                                const busy = ['queued', 'ocr', 'wait'].includes(s.status);
+                                const isOpen = (wide || idx === 0) !== open.has(row.id);
+                                const caption = `${row.meter} · ${fmtDate(row.date)} ${row.time}${row.worker ? ' · ' + row.worker : ''}`;
+                                return (
+                                    <div key={row.id} className={'wk-tile ad-gold' + (isOpen ? ' open' : '')}>
+                                        <div className="wk-row" role="button" tabIndex={0} aria-expanded={isOpen} onClick={() => flip(row.id)}
+                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(row.id); } }}>
+                                            <div className="txt">
+                                                <div className="wk-place md"><Ic n="gauge" />{row.meter}</div>
+                                                <div className="wk-sub">{row.worker && <>{t.pend_worker}: <b>{row.worker}</b> · </>}<bdi>{fmtDate(row.date)} {row.time}</bdi></div>
+                                            </div>
+                                            <span className={'ad-num' + (num === null ? ' empty' : '')}><bdi>{num === null ? '…' : s.value}</bdi></span>
                                         </div>
-                                    ) : <div style={{ ...S.hint, padding: '20px', textAlign: 'center' }}>{t.pend_no_photo}</div>}
-                                    {row.photos.length > 1 && (
-                                        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto' }}>
-                                            {row.photos.map(p => (
-                                                <img key={p} src={p} alt="" onClick={() => patch(row.id, { photo: p })}
-                                                    style={{ width: '54px', height: '54px', objectFit: 'cover', borderRadius: '8px', cursor: 'pointer', flexShrink: 0, border: p === photo ? '3px solid var(--brand-button, #844128)' : '1px solid #ebe3dc' }} />
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div style={{ fontSize: '14px', color: '#5a4f48', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        {row.worker && <span>{t.pend_worker}: <b>{row.worker}</b></span>}
-                                        <span>{t.pend_prev}: {row.prev ? <b>{row.prev.value} {row.unit}</b> : t.pend_no_prev}{row.prev && <span style={{ color: '#7d726a' }}> ({fmtDate(row.prev.date)} {row.prev.time})</span>}</span>
-                                        {row.notes && <span style={{ color: '#7d726a', overflowWrap: 'anywhere' }}>💬 {row.notes}</span>}
+                                        {isOpen && (
+                                            <div className="wk-more">
+                                                {photo ? (
+                                                    <div className="ad-big">
+                                                        <button type="button" className="img" aria-label={t.photo} onClick={() => setViewer({ items: row.photos, index: Math.max(0, row.photos.indexOf(photo)), caption })}>
+                                                            <img src={photo} alt="" className={s.rot % 180 ? 'r90' : ''} style={{ transform: `rotate(${s.rot || 0}deg)` }} />
+                                                        </button>
+                                                        <button type="button" className="ad-btn" onClick={() => patch(row.id, { rot: ((s.rot || 0) + 90) % 360 })}><Ic n="rotate" />{t.pend_rotate}</button>
+                                                    </div>
+                                                ) : <div className="ad-empty" style={{ padding: '16px' }}><Ic n="image" />{t.pend_no_photo}</div>}
+                                                {row.photos.length > 1 && (
+                                                    <div className="ad-thumbs">
+                                                        {row.photos.map(p => (
+                                                            <button key={p} type="button" className={'ad-ph sm' + (p === photo ? ' on' : '')} aria-label={t.photo} onClick={() => patch(row.id, { photo: p })}>
+                                                                <img src={p} alt="" />
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div className="ad-kv">
+                                                    {t.pend_prev}: {row.prev ? <b><bdi>{row.prev.value} {row.unit}</bdi></b> : t.pend_no_prev}
+                                                    {row.prev && <> (<bdi>{fmtDate(row.prev.date)} {row.prev.time}</bdi>)</>}
+                                                </div>
+                                                {row.notes && <div className="ad-kv" style={{ display: 'flex', gap: '6px' }}><Ic n="note" /><span>{row.notes}</span></div>}
+
+                                                {s.status === 'queued' && <div className="ad-ai wait"><Ic n="clock" />{t.pend_queued}</div>}
+                                                {s.status === 'ocr' && <div className="ad-ai"><Ic n="ai" />{t.pend_running}</div>}
+                                                {s.status === 'wait' && <div className="ad-ai wait"><Ic n="clock" />{t.pend_wait(s.waitLeft)}</div>}
+                                                {s.ai && <div className="ad-ai ok"><Ic n="ai" />{t.pend_ai}: <b><bdi>{s.ai}</bdi></b></div>}
+                                                {s.aiFail && !busy && <div className="ad-ai fail"><Ic n="warn" /><span>{t.pend_ai_fail}: {s.aiFail}</span></div>}
+
+                                                <label className="ad-lab">{t.pend_value}{row.unit ? `, ${row.unit}` : ''}
+                                                    <input type="text" inputMode="decimal" className={'ad-fld big' + (less ? ' warn' : '')} value={s.value || ''}
+                                                        placeholder={row.prev ? String(row.prev.value) : ''} dir="ltr"
+                                                        onChange={e => patch(row.id, { value: e.target.value })}
+                                                        onKeyDown={e => { if (e.key === 'Enter') save(row); }} />
+                                                </label>
+                                                {less && <div className="ad-less"><Ic n="warn" />{t.pend_less}</div>}
+
+                                                <div className="ad-btnrow">
+                                                    <button type="button" className="ad-btn" disabled={busy || !photo} onClick={() => { stopRef.current = false; recognize(row); }}>
+                                                        <Ic n="ai" />{s.ai || s.aiFail ? t.pend_ocr_again : t.pend_ocr}
+                                                    </button>
+                                                    <button type="button" className="ad-btn danger" onClick={() => skip(row)}>{t.pend_skip}</button>
+                                                </div>
+                                                <button type="button" className="wk-done lg" disabled={num === null || s.saving} onClick={() => save(row)}>
+                                                    <Ic n="save" />{t.pend_save}
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
-
-                                    {s.status === 'queued' && <div style={{ color: '#7a5a30', fontWeight: 'bold' }}>{t.pend_queued}</div>}
-                                    {s.status === 'ocr' && <div style={{ color: '#7a5a30', fontWeight: 'bold' }}>{t.pend_running}</div>}
-                                    {s.status === 'wait' && <div style={{ color: '#b45309', fontWeight: 'bold' }}>{t.pend_wait(s.waitLeft)}</div>}
-                                    {s.ai && <div style={{ color: '#1f6b3d' }}>🤖 {t.pend_ai}: <b>{s.ai}</b></div>}
-                                    {s.aiFail && !busy && <div style={{ color: '#a3301c', fontSize: '14px', overflowWrap: 'anywhere' }}>⚠️ {t.pend_ai_fail}: {s.aiFail}</div>}
-
-                                    <label style={S.label}>{t.pend_value}{row.unit ? `, ${row.unit}` : ''}
-                                        <input type="text" inputMode="decimal" value={s.value || ''} onChange={e => patch(row.id, { value: e.target.value })}
-                                            onKeyDown={e => { if (e.key === 'Enter') save(row); }}
-                                            style={{ ...S.field, fontSize: '20px', fontWeight: 'bold', borderColor: less ? '#e0a23a' : '#d9cec5' }} />
-                                    </label>
-                                    {less && <div style={{ color: '#b45309', fontSize: '14px', fontWeight: 'bold' }}>{t.pend_less}</div>}
-
-                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                        <button type="button" style={{ ...S.btn, flex: '1 1 auto' }} disabled={busy || !photo} onClick={() => { stopRef.current = false; recognize(row); }}>
-                                            {s.ai || s.aiFail ? t.pend_ocr_again : t.pend_ocr}
-                                        </button>
-                                        <button type="button" style={{ ...S.primary, background: '#26875a', flex: '1 1 auto', opacity: num === null || s.saving ? 0.5 : 1 }} disabled={num === null || s.saving} onClick={() => save(row)}>
-                                            {t.pend_save}
-                                        </button>
-                                        <button type="button" style={{ ...S.danger, flex: '0 1 auto' }} onClick={() => skip(row)}>{t.pend_skip}</button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-            )}
-        </div>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+            {viewer && <PhotoViewer items={viewer.items} index={viewer.index} caption={viewer.caption} t={{ close: t.close }} onClose={() => setViewer(null)} />}
+        </>
     );
 }

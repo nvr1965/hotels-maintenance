@@ -1,13 +1,11 @@
 <?php
 require_once __DIR__ . '/../core/api.php';
+require_once __DIR__ . '/../core/meters.php';
 $me = app_require(['head', 'viewer']);
 $hid = $me['hotel_id'];
 
-header('Content-Type: application/json; charset=utf-8');
-
-$lang = $_GET['lang'] ?? 'ru';
-if (!in_array($lang, ['ru', 'en', 'he', 'ar'])) $lang = 'ru';
-$nameCol = 'name_' . $lang;
+$lang = api_lang($me);
+$taskName = fn($r) => i18n_pick($r['names'], $lang) ?: ui_t('routine_task', $lang);
 
 // ---- Режим 1: ретроспектива показаний одного счётчика (для графика) ----
 if (isset($_GET['history_task_id'])) {
@@ -15,30 +13,22 @@ if (isset($_GET['history_task_id'])) {
     $days   = isset($_GET['days']) ? max(7, min(365, (int)$_GET['days'])) : 90;
     $from   = date('Y-m-d', strtotime("-$days days"));
 
-    $meta = null;
-    $resMeta = $db->query("SELECT id, COALESCE(NULLIF($nameCol, ''), name_ru, 'Регламентная задача') AS name, requires_ocr, ocr_type
-                            FROM routine_tasks WHERE id = $taskId AND hotel_id = $hid LIMIT 1");
-    if ($resMeta) $meta = $resMeta->fetch_assoc();
+    $meta = db_one("SELECT id, names, requires_ocr, ocr_type FROM routine_tasks WHERE id = ? AND hotel_id = ?", [$taskId, $hid]);
     if (!$meta) api_fail('not_found');
+    $meta = ['id' => (int)$meta['id'], 'name' => $taskName($meta), 'requires_ocr' => (int)$meta['requires_ocr'], 'ocr_type' => $meta['ocr_type']];
 
     $history = [];
-    $res = $db->query("SELECT target_date, ocr_value, ocr_unit, status
-                        FROM routine_schedule
-                        WHERE task_id = $taskId AND target_date >= '$from'
-                        ORDER BY target_date ASC");
-    if ($res) {
-        while ($r = $res->fetch_assoc()) {
-            $history[] = [
-                'date'   => $r['target_date'],
-                'value'  => $r['ocr_value'] !== null ? (float)$r['ocr_value'] : null,
-                'unit'   => $r['ocr_unit'],
-                'status' => $r['status'],
-            ];
-        }
+    foreach (db_all("SELECT target_date::text AS target_date, ocr_value, ocr_unit, status FROM routine_schedule
+                     WHERE task_id = ? AND target_date >= ? ORDER BY target_date ASC", [$taskId, $from]) as $r) {
+        $history[] = [
+            'date'   => $r['target_date'],
+            'value'  => meter_number($r['ocr_value']),
+            'unit'   => $r['ocr_unit'],
+            'status' => $r['status'],
+        ];
     }
 
-    echo json_encode(['success' => true, 'task' => $meta, 'history' => $history]);
-    exit;
+    api_ok(['task' => $meta, 'history' => $history]);
 }
 
 // ---- Режим 2: матрица «регламентная задача × дата» за период ----
@@ -53,34 +43,23 @@ if ($isDate($_GET['from'] ?? null)) {
 } else {
     $from = date('Y-m-d', strtotime($to . " -" . ($days - 1) . " days"));
 }
-$toEsc = $db->real_escape_string($to);
-$fromEsc = $db->real_escape_string($from);
-
 $tasksMeta = [];
-$res = $db->query("SELECT id, COALESCE(NULLIF($nameCol, ''), name_ru, 'Регламентная задача') AS name, requires_ocr, ocr_type
-                    FROM routine_tasks WHERE hotel_id = $hid ORDER BY sort_order ASC, id ASC");
-if ($res) {
-    while ($r = $res->fetch_assoc()) {
-        $tasksMeta[(int)$r['id']] = [
-            'id' => (int)$r['id'], 'name' => $r['name'],
-            'requires_ocr' => !empty($r['requires_ocr']), 'ocr_type' => $r['ocr_type'],
-            'cells' => []
-        ];
-    }
+foreach (db_all("SELECT id, names, requires_ocr, ocr_type FROM routine_tasks WHERE hotel_id = ? ORDER BY sort_order ASC, id ASC", [$hid]) as $r) {
+    $tasksMeta[(int)$r['id']] = [
+        'id' => (int)$r['id'], 'name' => $taskName($r),
+        'requires_ocr' => (bool)$r['requires_ocr'], 'ocr_type' => $r['ocr_type'],
+        'cells' => []
+    ];
 }
 
-$res = $db->query("SELECT task_id, target_date, status, ocr_value, ocr_unit, worker_id
-                    FROM routine_schedule
-                    WHERE hotel_id = $hid AND target_date BETWEEN '$fromEsc' AND '$toEsc'");
 $byTaskDate = [];
-if ($res) {
-    while ($r = $res->fetch_assoc()) {
-        $byTaskDate[(int)$r['task_id']][$r['target_date']] = [
-            'status' => $r['status'],
-            'ocr_value' => $r['ocr_value'],
-            'ocr_unit' => $r['ocr_unit'],
-        ];
-    }
+foreach (db_all("SELECT task_id, target_date::text AS target_date, status, ocr_value, ocr_unit FROM routine_schedule
+                 WHERE hotel_id = ? AND target_date BETWEEN ? AND ?", [$hid, $from, $to]) as $r) {
+    $byTaskDate[(int)$r['task_id']][$r['target_date']] = [
+        'status' => $r['status'],
+        'ocr_value' => $r['ocr_value'],
+        'ocr_unit' => $r['ocr_unit'],
+    ];
 }
 
 // Список дат периода (для заголовков столбцов на фронтенде)
@@ -103,5 +82,4 @@ foreach ($tasksMeta as $tid => &$t) {
 }
 unset($t);
 
-echo json_encode(['success' => true, 'from' => $from, 'to' => $to, 'dates' => $dates, 'tasks' => array_values($tasksMeta)]);
-exit;
+api_ok(['from' => $from, 'to' => $to, 'dates' => $dates, 'tasks' => array_values($tasksMeta)]);

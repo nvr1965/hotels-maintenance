@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import BossLinks from './BossLinks';
 import { fmtNum } from './MeterChart';
+import { Ic } from './admin/adminUi';
+import { meterText } from './admin/meterText';
+import { PhotoViewer } from './work/WorkTiles';
 
 // Временная страница для сисадмина: фото счётчиков с компьютера → распознавание → проверка → запись в базу.
 // По одному фото на каждый счётчик (регламентные задачи с распознаванием).
@@ -23,7 +26,9 @@ function dateFromName(name) {
 
 const emptySlot = { file: null, preview: null, status: 'idle', url: null, gemini: null, value: '', date: '', time: '', error: null, source: '' };
 
-export default function MeterUpload() {
+export default function MeterUpload({ lang = 'en' }) {
+    const m_ = meterText(lang);
+    const [viewer, setViewer] = useState(null);
     const [meters, setMeters] = useState([]);
     const [slots, setSlots] = useState({});
     const [existing, setExisting] = useState({});      // { 'YYYY-MM-DD': { taskId: [{ time, value }] } }
@@ -53,9 +58,9 @@ export default function MeterUpload() {
                 if (data.success) {
                     setMeters(data.meters);
                     setSlots(Object.fromEntries(data.meters.map(m => [m.id, { ...emptySlot }])));
-                } else setMessage({ ok: false, text: data.message || 'Нет доступа' });
+                } else setMessage({ ok: false, text: data.message || m_.no_access });
             } catch {
-                setMessage({ ok: false, text: 'Нет связи с сервером' });
+                setMessage({ ok: false, text: m_.no_net });
             }
         })();
         loadRecent();
@@ -75,7 +80,7 @@ export default function MeterUpload() {
     const pickFile = async (meter, file) => {
         if (!file) return;
         if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
-            patch(meter.id, { ...emptySlot, status: 'error', error: 'Нужно фото JPG, PNG или WEBP' });
+            patch(meter.id, { ...emptySlot, status: 'error', error: m_.bad_type });
             return;
         }
         setMessage(null);
@@ -86,7 +91,7 @@ export default function MeterUpload() {
         if (old?.preview) URL.revokeObjectURL(old.preview);
         patch(meter.id, {
             ...emptySlot, file, preview: URL.createObjectURL(file), status: 'ocr',
-            date: guess.date, time: guess.time || hhmm(mod), source: fromName ? 'из имени файла' : 'по дате файла',
+            date: guess.date, time: guess.time || hhmm(mod), source: fromName ? m_.src_name : m_.src_file,
         });
         loadExisting(guess.date);
 
@@ -101,20 +106,20 @@ export default function MeterUpload() {
                 const res = await fetch(`${API}?action=ocr`, { method: 'POST', body: fd });
                 const data = await res.json();
                 if (!data.success) {
-                    patch(meter.id, { status: 'error', error: data.message || 'Ошибка' });
+                    patch(meter.id, { status: 'error', error: data.message || m_.err });
                     return;
                 }
                 const upd = { url: data.url };
                 if (data.taken) {
                     upd.date = data.taken.date;
                     upd.time = data.taken.time;
-                    upd.source = 'из данных фото (EXIF)';
+                    upd.source = m_.src_exif;
                     loadExisting(data.taken.date);
                 }
                 patch(meter.id, upd);
                 applyOcr(meter, data, 0);
             } catch {
-                patch(meter.id, { status: 'error', error: 'Нет связи с сервером' });
+                patch(meter.id, { status: 'error', error: m_.no_net });
             }
         });
     };
@@ -137,7 +142,7 @@ export default function MeterUpload() {
             }, 1000);
             return;
         }
-        patch(meter.id, { status: 'done', gemini: null, error: data.error || 'Не распознано', waitLeft: null });
+        patch(meter.id, { status: 'done', gemini: null, error: data.error || m_.not_recognized, waitLeft: null });
     };
 
     // Повторное распознавание уже загруженного фото (Google был перегружен или кончился лимит)
@@ -153,10 +158,10 @@ export default function MeterUpload() {
                     body: JSON.stringify({ action: 'reocr', task_id: meter.id, url }),
                 });
                 const data = await res.json();
-                if (!data.success) { patch(meter.id, { status: 'done', gemini: null, error: data.message || 'Ошибка' }); return; }
+                if (!data.success) { patch(meter.id, { status: 'done', gemini: null, error: data.message || m_.err }); return; }
                 applyOcr(meter, { ...data, url }, attempt);
             } catch {
-                patch(meter.id, { status: 'done', gemini: null, error: 'Нет связи с сервером' });
+                patch(meter.id, { status: 'done', gemini: null, error: m_.no_net });
             }
         });
     };
@@ -201,34 +206,29 @@ export default function MeterUpload() {
             const data = await res.json();
             if (data.saved > 0) {
                 const names = ready.map(m => m.name).join(', ');
-                setMessage({ ok: true, text: `Записано в базу: ${data.saved} (${names})` + (data.errors?.length ? `. Не записано: ${data.errors.join('; ')}` : '') });
+                setMessage({ ok: true, text: m_.saved_n(data.saved, names) + (data.errors?.length ? `. ${m_.not_saved}: ${data.errors.join('; ')}` : '') });
                 ready.forEach(m => clearSlot(m.id));
                 setExisting({});
                 loadRecent();
             } else {
-                setMessage({ ok: false, text: (data.errors || []).join('; ') || data.message || 'Ничего не записано' });
+                setMessage({ ok: false, text: (data.errors || []).join('; ') || data.message || m_.nothing_saved });
             }
         } catch {
-            setMessage({ ok: false, text: 'Нет связи с сервером' });
+            setMessage({ ok: false, text: m_.no_net });
         } finally {
             setSaving(false);
         }
     };
-
-    const field = { padding: '9px 10px', borderRadius: '10px', border: '1px solid #d9cec5', fontSize: '17px', background: '#fff', width: '100%', boxSizing: 'border-box' };
 
     // Таблица последних показаний: строки — дни (новые сверху), колонки — счётчики
     const recentDays = recent ? Array.from({ length: 14 }, (_, i) => addDays(recent.to, -i)) : [];
     const recentVal = (m, d) => { const ps = m.points.filter(p => p.date === d); return ps.length ? { ...ps[ps.length - 1], more: ps.length - 1 } : null; };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'start' }}>
-            <div style={{ background: '#f8efe6', borderRadius: '12px', padding: '12px 14px', fontSize: '16px', color: '#3f3530', lineHeight: 1.5 }}>
-                Выберите или перетащите фото каждого счётчика. Фото распознаются по очереди, по одному. В базу ничего не пишется,
-                пока вы не проверите цифры и не нажмёте «Записать в базу». Дата и время берутся из фото, их можно поправить. За день можно записать несколько показаний.
-            </div>
+        <div className="ad-list">
+            <div className="ad-info">{m_.up_intro}</div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+            <div className="ad-grid">
                 {meters.map(m => {
                     const s = slots[m.id] || emptySlot;
                     const inDb = s.date ? existing[s.date]?.[m.id] : undefined;
@@ -236,76 +236,65 @@ export default function MeterUpload() {
                     const num = Number(String(s.value).replace(',', '.'));
                     const lower = m.kind === 'counter' && prev && String(s.value).trim() !== '' && !Number.isNaN(num) && num < prev.value;
                     return (
-                        <div key={m.id}
+                        <div key={m.id} className={'ad-card' + (dragOver === m.id ? ' drag' : '')}
                             onDragOver={e => { e.preventDefault(); setDragOver(m.id); }}
                             onDragLeave={() => setDragOver(null)}
-                            onDrop={e => { e.preventDefault(); setDragOver(null); pickFile(m, e.dataTransfer.files?.[0]); }}
-                            style={{ border: dragOver === m.id ? '2px dashed var(--brand-button, #844128)' : '1px solid #ebe3dc', borderRadius: '14px', padding: '14px', background: dragOver === m.id ? '#f8efe6' : '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' }}>
-                                <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--brand-primary, #371f20)' }}>{m.name}</h3>
-                                <span style={{ color: '#7d726a', fontSize: '15px' }}>{m.unit}</span>
-                            </div>
+                            onDrop={e => { e.preventDefault(); setDragOver(null); pickFile(m, e.dataTransfer.files?.[0]); }}>
+                            <h3><Ic n="gauge" />{m.name} <span className="ad-unit ad-push">{m.unit}</span></h3>
 
                             {s.preview ? (
-                                <a href={s.preview} target="_blank" rel="noreferrer">
-                                    <img src={s.preview} alt="" style={{ width: '100%', height: '180px', objectFit: 'contain', background: '#f6f1ec', borderRadius: '10px' }} />
-                                </a>
+                                <div className="ad-big">
+                                    <button type="button" className="img" aria-label={m_.photo} onClick={() => setViewer({ items: [s.preview], caption: m.name })}>
+                                        <img src={s.preview} alt="" />
+                                    </button>
+                                </div>
                             ) : (
-                                <label style={{ height: '180px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '2px dashed #d9cec5', borderRadius: '10px', cursor: 'pointer', color: '#6e635b', background: '#fcf9f6', textAlign: 'center', padding: '10px' }}>
-                                    <span style={{ fontSize: '34px' }}>📷</span>
-                                    <span style={{ fontWeight: 'bold', color: 'var(--brand-button, #844128)' }}>Выбрать фото</span>
-                                    <span style={{ fontSize: '14px' }}>или перетащите сюда</span>
+                                <label className="ad-drop">
+                                    <Ic n="image" className="lg" />
+                                    <b>{m_.pick}</b>
+                                    <span>{m_.drop}</span>
                                     <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { pickFile(m, e.target.files?.[0]); e.target.value = ''; }} />
                                 </label>
                             )}
 
-                            {s.status === 'queued' && <div style={{ color: '#7a5a30', fontWeight: 'bold' }}>⏳ В очереди на распознавание…</div>}
-                            {s.status === 'ocr' && <div style={{ color: '#7a5a30', fontWeight: 'bold' }}>⏳ Распознаю…</div>}
-                            {s.status === 'wait' && <div style={{ color: '#7a5a30', fontWeight: 'bold' }}>⏳ Лимит Gemini в минуту. Повторю сам через {s.waitLeft} с…</div>}
-                            {s.status === 'error' && <div style={{ color: '#c43d3d', fontWeight: 'bold' }}>{s.error}</div>}
+                            {s.status === 'queued' && <div className="ad-ai wait"><Ic n="clock" />{m_.queued}</div>}
+                            {s.status === 'ocr' && <div className="ad-ai"><Ic n="ai" />{m_.ocr}</div>}
+                            {s.status === 'wait' && <div className="ad-ai wait"><Ic n="clock" />{m_.wait(s.waitLeft)}</div>}
+                            {s.status === 'error' && <div className="ad-ai fail"><Ic n="warn" /><span>{s.error}</span></div>}
 
                             {(s.status === 'done' || (s.status === 'error' && s.url)) && (
                                 <>
-                                    <div style={{ fontSize: '15px', color: s.gemini !== null ? '#26875a' : '#c43d3d' }}>
-                                        {s.gemini !== null ? <>Распознано: <b>{fmtNum(Number(s.gemini), 3)}</b></> : <>Не распознано: {s.error}{/вручную/.test(s.error || '') ? '.' : '. Введите вручную.'}</>}
-                                    </div>
+                                    {s.gemini !== null
+                                        ? <div className="ad-ai ok"><Ic n="ai" />{m_.recognized} <b><bdi>{fmtNum(Number(s.gemini), 3)}</bdi></b></div>
+                                        : <div className="ad-ai fail"><Ic n="warn" /><span>{m_.not_rec} {s.error}{/вручную/.test(s.error || '') ? '.' : '. ' + m_.enter_manual}</span></div>}
                                     {s.gemini === null && s.url && (
-                                        <button type="button" onClick={() => retryOcr(m, s.url)}
-                                            style={{ alignSelf: 'flex-start', minHeight: '40px', padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--brand-accent, #cdaa7c)', background: '#f8efe6', color: 'var(--brand-button, #844128)', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}>
-                                            🔄 Распознать ещё раз
-                                        </button>
+                                        <button type="button" className="ad-btn" style={{ alignSelf: 'flex-start' }} onClick={() => retryOcr(m, s.url)}><Ic n="refresh" />{m_.again}</button>
                                     )}
-                                    <label style={{ fontSize: '15px', color: '#6e635b' }}>
-                                        Показание, {m.unit}
-                                        <input inputMode="decimal" value={s.value} onChange={e => patch(m.id, { value: e.target.value })}
-                                            style={{ ...field, fontSize: '22px', fontWeight: 'bold', marginTop: '4px', borderColor: lower ? '#d63c3c' : '#d9cec5' }} />
+                                    <label className="ad-lab">{m_.value}, {m.unit}
+                                        <input className={'ad-fld big' + (lower ? ' bad' : '')} inputMode="decimal" dir="ltr" value={s.value} onChange={e => patch(m.id, { value: e.target.value })} />
                                     </label>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <label style={{ fontSize: '15px', color: '#6e635b', flex: 2 }}>
-                                            Дата
-                                            <input type="date" value={s.date} onChange={e => { patch(m.id, { date: e.target.value, source: 'вручную' }); loadExisting(e.target.value); }} style={{ ...field, marginTop: '4px' }} />
+                                    <div className="ad-row2">
+                                        <label className="ad-lab">{m_.date}
+                                            <input className="ad-fld" type="date" value={s.date} onChange={e => { patch(m.id, { date: e.target.value, source: m_.src_manual }); loadExisting(e.target.value); }} />
                                         </label>
-                                        <label style={{ fontSize: '15px', color: '#6e635b', flex: 1 }}>
-                                            Время
-                                            <input type="time" value={s.time} onChange={e => patch(m.id, { time: e.target.value })} style={{ ...field, marginTop: '4px' }} />
+                                        <label className="ad-lab">{m_.time}
+                                            <input className="ad-fld" type="time" value={s.time} onChange={e => patch(m.id, { time: e.target.value })} />
                                         </label>
                                     </div>
-                                    <div style={{ fontSize: '14px', color: '#7d726a' }}>Дата {s.source}</div>
+                                    <div className="ad-hint">{m_.date_src(s.source)}</div>
                                     {prev && (
-                                        <div style={{ fontSize: '15px', color: lower ? '#c43d3d' : '#6e635b', fontWeight: lower ? 'bold' : 'normal' }}>
-                                            Прошлое показание: {fmtNum(prev.value, 3)} ({fmtDate(prev.date)}{prev.time ? ` ${prev.time}` : ''}){lower ? ' — новое меньше, проверьте цифры' : ''}
+                                        <div className={lower ? 'ad-warn-t' : 'ad-kv'}>
+                                            {lower && <Ic n="warn" />}
+                                            <span>{m_.prev} <b><bdi>{fmtNum(prev.value, 3)}</bdi></b> (<bdi>{fmtDate(prev.date)}{prev.time ? ` ${prev.time}` : ''}</bdi>){lower ? ` — ${m_.lower}` : ''}</span>
                                         </div>
                                     )}
                                     {inDb?.length > 0 && (
-                                        <div style={{ fontSize: '15px', color: '#7a5a30' }}>
-                                            В базе на {fmtDate(s.date)} уже есть: {inDb.map(x => `${fmtNum(x.value, 3)} (${x.time})`).join(', ')}.
-                                            {inDb.some(x => x.time === s.time) ? <b style={{ color: '#b45309' }}> На {s.time} показание уже есть — оно будет заменено (то же фото).</b> : ' Это будет ещё одно показание за день.'}
-                                        </div>
+                                        <div className="ad-warnbox"><Ic n="warn" /><span>
+                                            {m_.in_db(fmtDate(s.date))} <bdi>{inDb.map(x => `${fmtNum(x.value, 3)} (${x.time})`).join(', ')}</bdi>.{' '}
+                                            {inDb.some(x => x.time === s.time) ? <b>{m_.will_replace(s.time)}</b> : m_.one_more}
+                                        </span></div>
                                     )}
-                                    <button type="button" onClick={() => clearSlot(m.id)}
-                                        style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#7d726a', cursor: 'pointer', fontSize: '15px', padding: 0, textDecoration: 'underline' }}>
-                                        Убрать фото
-                                    </button>
+                                    <button type="button" className="ad-btn ghost" style={{ alignSelf: 'flex-start' }} onClick={() => clearSlot(m.id)}><Ic n="x" />{m_.remove_photo}</button>
                                 </>
                             )}
                         </div>
@@ -314,37 +303,37 @@ export default function MeterUpload() {
             </div>
 
             {message && (
-                <div style={{ padding: '12px 14px', borderRadius: '10px', fontWeight: 'bold', background: message.ok ? '#e3f3e9' : '#fee2e2', color: message.ok ? '#1f7a4f' : '#a83232' }}>
-                    {message.ok ? '✓ ' : ''}{message.text}
-                </div>
+                <div role="status" className={'ad-msg ' + (message.ok ? 'ok' : 'err')}><Ic n={message.ok ? 'check' : 'warn'} /><span>{message.text}</span></div>
             )}
 
-            <button type="button" onClick={save} disabled={!ready.length || saving}
-                style={{ minHeight: '52px', padding: '12px 20px', background: ready.length ? 'var(--brand-button, #844128)' : '#d9cec5', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: 'bold', fontSize: '18px', cursor: ready.length ? 'pointer' : 'default' }}>
-                {saving ? 'Записываю…' : `Записать в базу${ready.length ? ` (${ready.length})` : ''}`}
+            <button type="button" className="wk-done lg" onClick={save} disabled={!ready.length || saving}>
+                <Ic n="save" />{saving ? m_.saving : m_.save_db(ready.length)}
             </button>
 
             {recent && meters.length > 0 && (
-                <div>
-                    <h3 style={{ margin: '6px 0 10px', fontSize: '18px', color: 'var(--brand-primary, #371f20)' }}>Показания за последние 14 дней <span style={{ fontWeight: "normal", fontSize: "15px", color: "#7d726a" }}>(последнее за день)</span></h3>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '16px' }}>
+                <>
+                    <div className="ad-sec">{m_.last14} <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>{m_.last14_d}</span></div>
+                    <div className="ad-tbl">
+                        <table>
                             <thead>
-                                <tr style={{ borderBottom: '2px solid #ebe3dc', color: '#6e635b' }}>
-                                    <th style={{ padding: '8px', textAlign: 'start' }}>Дата</th>
-                                    {recent.meters.map(m => <th key={m.id} style={{ padding: '8px', textAlign: 'end' }}>{m.name}{m.unit ? `, ${m.unit}` : ''}</th>)}
+                                <tr>
+                                    <th className="first">{m_.date}</th>
+                                    {recent.meters.map(m => <th key={m.id} className="num">{m.name}{m.unit ? `, ${m.unit}` : ''}</th>)}
                                 </tr>
                             </thead>
                             <tbody>
                                 {recentDays.map(d => (
-                                    <tr key={d} style={{ borderBottom: '1px solid #f3ebe2' }}>
-                                        <td style={{ padding: '8px', color: '#6e635b' }}>{fmtDate(d)}</td>
+                                    <tr key={d}>
+                                        <td className="first" style={{ color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}><bdi>{fmtDate(d)}</bdi></td>
                                         {recent.meters.map(m => {
                                             const p = recentVal(m, d);
                                             return (
-                                                <td key={m.id} style={{ padding: '8px', textAlign: 'end', fontWeight: 'bold', color: p?.anomaly ? '#c43d3d' : '#2b2320' }}>
-                                                    {p ? (p.photo ? <a href={p.photo} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{fmtNum(p.value, 3)}</a> : fmtNum(p.value, 3)) : <span style={{ color: '#cfc4ba' }}>—</span>}
-                                                    {p?.more > 0 && <span title="Ещё показания за этот день — см. «Правка показаний»" style={{ fontSize: '13px', color: '#7d726a', fontWeight: 'normal' }}> +{p.more}</span>}
+                                                <td key={m.id} className={'num' + (p?.anomaly ? ' bad' : '')} style={{ fontWeight: 700 }}>
+                                                    {p ? (p.photo
+                                                        ? <button type="button" className="ad-btn ghost" style={{ minHeight: 0, padding: 0, color: 'inherit', fontWeight: 700 }}
+                                                            onClick={() => setViewer({ items: [p.photo], caption: `${m.name} · ${fmtDate(d)} · ${fmtNum(p.value, 3)}` })}>{fmtNum(p.value, 3)}</button>
+                                                        : fmtNum(p.value, 3)) : <span style={{ color: '#cfc4ba' }}>—</span>}
+                                                    {p?.more > 0 && <span title={m_.more_day} style={{ fontSize: '12px', color: 'var(--ink-soft)', fontWeight: 'normal' }}> +{p.more}</span>}
                                                 </td>
                                             );
                                         })}
@@ -353,10 +342,11 @@ export default function MeterUpload() {
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </>
             )}
 
-            <BossLinks />
+            <BossLinks lang={lang} />
+            {viewer && <PhotoViewer items={viewer.items} index={0} caption={viewer.caption} t={{ close: m_.close }} onClose={() => setViewer(null)} />}
         </div>
     );
 }

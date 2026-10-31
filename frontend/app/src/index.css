@@ -77,3 +77,21 @@ button, input, select, textarea { font-family: inherit; }
 input, select, textarea { font-size: 17px; color: var(--text); }
 input::placeholder, textarea::placeholder { color: #9a8f87; }
 input:focus, select:focus, textarea:focus { outline: 2px solid rgba(132, 65, 40, 0.35); outline-offset: 1px; }
+/* Приложение не масштабируется жестами: ни щипком, ни двойным касанием. Прокрутка остаётся. */
+html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* Иврит: рубленый шрифт Heebo (только еврейские буквы), чуть крупнее — по размеру как кириллица */
+@font-face {
+  font-family: "HeSans"; font-style: normal; font-weight: 100 900; font-display: swap; size-adjust: 112%;
+  src: url("./assets/heebo-hebrew.woff2") format("woff2");
+  unicode-range: U+0590-05FF, U+FB1D-FB4F, U+20AA;
+}
+:root { --sans: "HeSans", system-ui, 'Segoe UI', Roboto, sans-serif; --heading: "HeSans", system-ui, 'Segoe UI', Roboto, sans-serif; }
+
+/* Арабский: рубленый Noto Sans Arabic, чуть крупнее — по размеру как кириллица */
+@font-face {
+  font-family: "ArSans"; font-style: normal; font-weight: 100 900; font-display: swap; size-adjust: 112%;
+  src: url("./assets/noto-sans-arabic.woff2") format("woff2");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFC;
+}
+:root { --sans: "HeSans", "ArSans", system-ui, 'Segoe UI', Roboto, sans-serif; --heading: "HeSans", "ArSans", system-ui, 'Segoe UI', Roboto, sans-serif; }

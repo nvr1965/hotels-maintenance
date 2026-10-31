@@ -14,7 +14,9 @@
  *   push_notify_new_urgent($hotelId, $taskId, $creatorId) — из save_task.php
  *   push_notify_urgent_done($hotelId, $taskId)            — из close_task.php
  */
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/tenancy.php';
+require_once __DIR__ . '/ui_text.php';
+require_once __DIR__ . '/translate.php';
 
 const PUSH_KEYS_FILE = __DIR__ . '/push_keys.php';
 const PUSH_TTL       = 4 * 3600;  // телефон был выключен дольше — уведомление уже не нужно
@@ -30,40 +32,26 @@ function push_contact(): string
 /** Кому в этом отеле слать уведомления о срочных: настройка отеля push_roles. */
 function push_roles(array $hotel): array
 {
-    $s = json_decode((string)($hotel['settings_json'] ?? ''), true);
+    $s = db_json($hotel['settings'] ?? null);
     $roles = is_array($s['push_roles'] ?? null) ? array_values(array_intersect($s['push_roles'], ['worker', 'manager', 'head'])) : null;
     return $roles ?: PUSH_DEFAULT_ROLES;
 }
 
 function push_hotel(int $hotelId): ?array
 {
-    global $db;
-    $st = $db->prepare("SELECT * FROM hotels WHERE id = ?");
-    $st->bind_param('i', $hotelId);
-    $st->execute();
-    $h = $st->get_result()->fetch_assoc();
-    $st->close();
-    return $h ?: null;
+    return db_one("SELECT * FROM hotels WHERE id = ?", [$hotelId]);
 }
-
-const PUSH_TITLE = [
-    'ru' => '🚨 Срочная заявка',
-    'en' => '🚨 Urgent request',
-    'he' => '🚨 קריאה דחופה',
-    'ar' => '🚨 طلب عاجل',
-];
 
 // ---------------------------------------------------------------- база
 
 function push_ensure_table(): void
 {
-    // таблицы создаёт db/schema.sql
+    // таблицы создаёт db/pg/01_schema.sql
 }
 
 /** Журнал рассылок: страница проверки показывает, что было с настоящими заявками. */
 function push_log(?int $hotelId, string $kind, int $taskId, string $note, array $results = []): void
 {
-    global $db;
     $ok = 0;
     $errs = [];
     foreach ($results as $id => $r) {
@@ -71,56 +59,37 @@ function push_log(?int $hotelId, string $kind, int $taskId, string $note, array 
         else $errs[] = "#$id: " . ($r['code'] ?: 'нет связи') . ' ' . mb_substr((string)$r['error'], 0, 80);
     }
     $note = mb_substr(trim($note . ($errs ? ' ' . implode('; ', $errs) : '')), 0, 1000);
-    $stmt = $db->prepare("INSERT INTO push_log (hotel_id, kind, task_id, sent, ok, note) VALUES (?, ?, ?, ?, ?, ?)");
-    $sent = count($results);
-    $stmt->bind_param('isiiis', $hotelId, $kind, $taskId, $sent, $ok, $note);
-    $stmt->execute();
-    $stmt->close();
+    db_exec("INSERT INTO push_log (hotel_id, kind, task_id, sent, ok, note) VALUES (?, ?, ?, ?, ?, ?)",
+        [$hotelId, $kind, $taskId, count($results), $ok, $note]);
     // Храним только последние 1000 записей (на все отели)
-    $db->query("DELETE FROM push_log WHERE id < (SELECT m FROM (SELECT MAX(id) - 1000 AS m FROM push_log) x)");
+    db_exec("DELETE FROM push_log WHERE id < (SELECT MAX(id) - 1000 FROM push_log)");
 }
 
 function push_save_subscription(int $userId, string $endpoint, string $p256dh, string $auth, string $lang, bool $silent): void
 {
-    global $db;
-    push_ensure_table();
     $hash = hash('sha256', $endpoint);
     $ua = mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
-    $s = $silent ? 1 : 0;
     // Тот же телефон мог раньше принадлежать другому сотруднику — подписка переходит к вошедшему
-    $stmt = $db->prepare("INSERT INTO push_subscriptions (user_id, endpoint, endpoint_hash, p256dh, auth, lang, silent, user_agent)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                          ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), p256dh = VALUES(p256dh), auth = VALUES(auth),
-                                                  lang = VALUES(lang), silent = VALUES(silent), user_agent = VALUES(user_agent)");
-    $stmt->bind_param('isssssis', $userId, $endpoint, $hash, $p256dh, $auth, $lang, $s, $ua);
-    $stmt->execute();
-    $stmt->close();
+    db_exec("INSERT INTO push_subscriptions (user_id, endpoint, endpoint_hash, p256dh, auth, lang, silent, user_agent)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (endpoint_hash) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
+                 lang = EXCLUDED.lang, silent = EXCLUDED.silent, user_agent = EXCLUDED.user_agent",
+        [$userId, $endpoint, $hash, $p256dh, $auth, $lang, $silent, $ua]);
 }
 
 function push_delete_subscription(string $endpoint, ?int $userId = null): void
 {
-    global $db;
-    push_ensure_table();
     $hash = hash('sha256', $endpoint);
-    if ($userId === null) {
-        $stmt = $db->prepare("DELETE FROM push_subscriptions WHERE endpoint_hash = ?");
-        $stmt->bind_param('s', $hash);
-    } else {
-        $stmt = $db->prepare("DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND user_id = ?");
-        $stmt->bind_param('si', $hash, $userId);
-    }
-    $stmt->execute();
-    $stmt->close();
+    if ($userId === null) db_exec("DELETE FROM push_subscriptions WHERE endpoint_hash = ?", [$hash]);
+    else db_exec("DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND user_id = ?", [$hash, $userId]);
 }
 
 /** Сколько срочных заявок отеля сейчас открыто — это число на иконке приложения. */
 function push_open_urgent_count(int $hotelId): int
 {
-    global $db;
-    $res = $db->query("SELECT COUNT(*) FROM maintenance_tasks
-                       WHERE hotel_id = " . (int)$hotelId . " AND status NOT IN ('done', 'completed')
-                         AND LOWER(TRIM(COALESCE(task_type, 'current'))) NOT IN ('planned', 'routine', 'regiment')");
-    return $res ? (int)$res->fetch_row()[0] : 0;
+    return (int)db_value("SELECT COUNT(*) FROM maintenance_tasks
+                          WHERE hotel_id = ? AND status NOT IN ('done', 'completed')
+                            AND LOWER(TRIM(COALESCE(task_type, 'current'))) NOT IN ('planned', 'routine', 'regiment')", [$hotelId]);
 }
 
 /**
@@ -129,56 +98,52 @@ function push_open_urgent_count(int $hotelId): int
  */
 function push_recipients(array $hotel, ?int $exceptUserId = null): array
 {
-    global $db;
-    $roles = "'" . implode("','", push_roles($hotel)) . "'";
-    $hid = (int)$hotel['id'];
-    $sql = "SELECT s.*, (SELECT COUNT(*) FROM hotel_members x WHERE x.user_id = s.user_id AND x.active = 1) AS hotel_count
-            FROM push_subscriptions s
-            JOIN users u ON u.id = s.user_id AND u.active = 1
-            JOIN hotel_members m ON m.user_id = s.user_id AND m.hotel_id = $hid AND m.active = 1
-            WHERE m.role IN ($roles)";
-    if ($exceptUserId) $sql .= " AND s.user_id <> " . (int)$exceptUserId;
-    $res = $db->query($sql);
-    return $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
+    return db_all("SELECT s.*, (SELECT COUNT(*) FROM hotel_members x WHERE x.user_id = s.user_id AND x.active) AS hotel_count
+                   FROM push_subscriptions s
+                   JOIN users u ON u.id = s.user_id AND u.active
+                   JOIN hotel_members m ON m.user_id = s.user_id AND m.hotel_id = ? AND m.active
+                   WHERE m.role = ANY(?::text[]) AND s.user_id <> ?",
+        [(int)$hotel['id'], pg_array_literal(push_roles($hotel)), (int)$exceptUserId]);
 }
 
 // ---------------------------------------------------------------- что рассылаем
 
 function push_notify_new_urgent(int $hotelId, int $taskId, int $creatorId): void
 {
-    global $db;
     $hotel = push_hotel($hotelId);
     if (!$hotel) return;
     $subs = push_recipients($hotel, $creatorId);
     if (!$subs) { push_log($hotelId, 'new', $taskId, 'Некому отправлять: ни одного подписанного получателя, кроме автора'); return; }
 
+    $row = db_one("SELECT t.id, t.description, t.description_lang, dict.names AS loc_names, a.asset_key
+                   FROM maintenance_tasks t
+                   LEFT JOIN hotel_assets a ON a.id = t.asset_id
+                   LEFT JOIN asset_dictionary dict ON dict.hotel_id = a.hotel_id AND a.asset_key = dict.term_key
+                   WHERE t.id = ? AND t.hotel_id = ?", [$taskId, $hotelId]);
+    if (!$row) { push_log($hotelId, 'new', $taskId, 'Заявка не найдена в базе'); return; }
+
+    // Текст на языке каждого получателя (перевод на лету, сохраняется в заявке)
     $task = [];
-    foreach (['ru', 'en', 'he', 'ar'] as $l) {
-        $res = $db->query("SELECT COALESCE(NULLIF(t.description_$l, ''), t.description_ru, '') AS d,
-                                  COALESCE(dict.term_$l, dict.term_ru, a.asset_key, '') AS loc
-                           FROM maintenance_tasks t
-                           LEFT JOIN hotel_assets a ON a.id = t.asset_id
-                           LEFT JOIN asset_dictionary dict ON dict.hotel_id = a.hotel_id AND a.asset_key = dict.term_en
-                           WHERE t.id = $taskId AND t.hotel_id = $hotelId");
-        $row = $res ? $res->fetch_assoc() : null;
-        if (!$row) { push_log($hotelId, 'new', $taskId, 'Заявка не найдена в базе'); return; }
-        $desc = trim(preg_replace('/\s+/u', ' ', (string)$row['d']));
+    foreach (array_unique(array_map(fn($s) => app_normalize_lang($s['lang']), $subs)) as $l) {
+        $r = i18n_rows_on_the_fly('maintenance_tasks', [$row], 'description', $l)[0];
+        $desc = trim(preg_replace('/\s+/u', ' ', (string)$r['description']));
         if (mb_strlen($desc) > 120) $desc = mb_substr($desc, 0, 117) . '…';
-        $task[$l] = trim($row['loc'] !== '' ? $row['loc'] . ' · ' . $desc : $desc);
+        $loc = $row['loc_names'] !== null ? i18n_pick($row['loc_names'], $l) : (string)($row['asset_key'] ?? '');
+        $task[$l] = trim($loc !== '' ? $loc . ' · ' . $desc : $desc);
     }
     $count = push_open_urgent_count($hotelId);
 
     $messages = [];
     foreach ($subs as $s) {
-        $l = isset($task[$s['lang']]) ? $s['lang'] : 'ru';
+        $l = app_normalize_lang($s['lang']);
         $messages[] = [$s, [
             'type'   => 'urgent',
             'id'     => $taskId,
             'hotel_id' => $hotelId,
-            'title'  => PUSH_TITLE[$l] . ((int)$s['hotel_count'] > 1 ? ' · ' . $hotel['name'] : ''),
+            'title'  => ui_t('push_urgent_title', $l) . ((int)$s['hotel_count'] > 1 ? ' · ' . $hotel['name'] : ''),
             'body'   => $task[$l],
             'count'  => $count,
-            'silent' => (int)$s['silent'] === 1,
+            'silent' => (bool)$s['silent'],
             'lang'   => $l,
         ]];
     }
@@ -267,16 +232,15 @@ function push_send_all(array $messages, string $topic): array
         if ($info['result'] !== CURLE_OK) $curlErrors[spl_object_id($info['handle'])] = curl_strerror($info['result']);
     }
 
-    global $db;
     foreach ($handles as [$ch, $sub]) {
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err = curl_error($ch) ?: ($curlErrors[spl_object_id($ch)] ?? '');
         $results[(int)$sub['id']] = ['code' => $code, 'error' => $code >= 200 && $code < 300 ? '' : ($err !== '' ? $err : substr((string)curl_multi_getcontent($ch), 0, 300))];
         if ($code >= 200 && $code < 300) {
-            $db->query("UPDATE push_subscriptions SET last_ok_at = NOW() WHERE id = " . (int)$sub['id']);
+            db_exec("UPDATE push_subscriptions SET last_ok_at = NOW() WHERE id = ?", [(int)$sub['id']]);
         } elseif ($code === 404 || $code === 410) {
             // Подписка больше не существует (приложение удалили, разрешение сняли)
-            $db->query("DELETE FROM push_subscriptions WHERE id = " . (int)$sub['id']);
+            db_exec("DELETE FROM push_subscriptions WHERE id = ?", [(int)$sub['id']]);
         } else {
             error_log("push: HTTP $code for subscription " . (int)$sub['id'] . ': ' . $results[(int)$sub['id']]['error']);
         }

@@ -7,8 +7,8 @@ header('Content-Type: application/manifest+json; charset=utf-8');
 header('Cache-Control: public, max-age=3600');
 
 $slug = (string)($_GET['hotel'] ?? '');
-$h = $slug !== '' ? db_one("SELECT * FROM hotels WHERE slug = ? AND active = 1", [$slug]) : null;
-$s = $h ? (json_decode((string)($h['settings_json'] ?? ''), true) ?: []) : [];
+$h = $slug !== '' ? db_one("SELECT * FROM hotels WHERE slug = ? AND active", [$slug]) : null;
+$s = $h ? db_json($h['settings']) : [];
 $icons = is_array($s['icons'] ?? null) ? $s['icons'] : [];
 $icon = fn(string $k, string $def) => is_string($icons[$k] ?? null) && preg_match('#^/[\w./-]+$#', $icons[$k]) ? $icons[$k] : $def;
 

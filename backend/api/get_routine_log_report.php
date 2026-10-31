@@ -6,11 +6,7 @@ require_once __DIR__ . '/../core/api.php';
 $me = app_require(['head', 'viewer']);
 $hid = $me['hotel_id'];
 
-header('Content-Type: application/json; charset=utf-8');
-
-$lang = $_GET['lang'] ?? 'ru';
-if (!in_array($lang, ['ru', 'en', 'he', 'ar'], true)) $lang = 'ru';
-$nameCol = 'name_' . $lang;
+$lang = api_lang($me);
 
 $today = date('Y-m-d');
 $isDate = fn($s) => is_string($s) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $s) && strtotime($s) !== false;
@@ -38,30 +34,33 @@ $mediaList = function ($json) {
 
 // ---- Справочник регламентов ----
 $tasks = [];
-$res = $db->query("SELECT id, COALESCE(NULLIF($nameCol, ''), name_ru, 'Регламентная задача') AS name, requires_ocr
-                    FROM routine_tasks WHERE hotel_id = $hid ORDER BY requires_ocr DESC, sort_order ASC, id ASC");
-while ($res && ($r = $res->fetch_assoc())) {
-    $tasks[(int)$r['id']] = ['id' => (int)$r['id'], 'name' => $r['name'], 'requires_ocr' => !empty($r['requires_ocr'])];
+foreach (db_all("SELECT id, names, requires_ocr FROM routine_tasks WHERE hotel_id = ? ORDER BY requires_ocr DESC, sort_order ASC, id ASC", [$hid]) as $r) {
+    $tasks[(int)$r['id']] = ['id' => (int)$r['id'], 'name' => i18n_pick($r['names'], $lang) ?: ui_t('routine_task', $lang),
+                             'requires_ocr' => (bool)$r['requires_ocr']];
 }
 
 $workers = [];
-$res = $db->query("SELECT id, display_name FROM users");
-while ($res && ($r = $res->fetch_assoc())) $workers[(int)$r['id']] = $r['display_name'];
+foreach (db_all("SELECT u.id, u.display_name FROM users u
+                 WHERE u.id IN (SELECT user_id FROM hotel_members WHERE hotel_id = ?)
+                    OR u.id IN (SELECT worker_id FROM routine_log WHERE hotel_id = ?)", [$hid, $hid]) as $r) {
+    $workers[(int)$r['id']] = $r['display_name'];
+}
 
 // ---- Итог дня (routine_schedule) ----
 $sched = [];
-$res = $db->query("SELECT task_id, target_date, status, worker_id, notes, media, ocr_value, ocr_unit
-                    FROM routine_schedule WHERE hotel_id = $hid AND target_date BETWEEN '$from' AND '$to'");
-while ($res && ($r = $res->fetch_assoc())) $sched[$r['target_date']][(int)$r['task_id']] = $r;
+foreach (db_all("SELECT task_id, target_date::text AS target_date, status, worker_id, notes, media, ocr_value, ocr_unit
+                 FROM routine_schedule WHERE hotel_id = ? AND target_date BETWEEN ? AND ?", [$hid, $from, $to]) as $r) {
+    $sched[$r['target_date']][(int)$r['task_id']] = $r;
+}
 
 // ---- Все выполнения (routine_log) ----
 $runs = [];
 {
-    $res = $db->query("SELECT id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw, is_repeat, closed_at
-                        FROM routine_log
-                        WHERE hotel_id = $hid AND target_date BETWEEN '$from' AND '$to' AND status = 'done'
-                        ORDER BY closed_at ASC, id ASC");
-    while ($res && ($r = $res->fetch_assoc())) {
+    foreach (db_all("SELECT id, task_id, worker_id, target_date::text AS target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw,
+                            is_repeat, closed_at
+                     FROM routine_log
+                     WHERE hotel_id = ? AND target_date BETWEEN ? AND ? AND status = 'done'
+                     ORDER BY closed_at ASC, id ASC", [$hid, $from, $to]) as $r) {
         $runs[$r['target_date']][(int)$r['task_id']][] = [
             'time'    => substr($r['closed_at'], 11, 5),
             'worker'  => $workers[(int)$r['worker_id']] ?? null,
@@ -109,5 +108,4 @@ for ($d = $to; $d >= $from; $d = date('Y-m-d', strtotime($d . ' -1 day'))) {
     $totals['total'] += count($tasks);
 }
 
-echo json_encode(['success' => true, 'from' => $from, 'to' => $to, 'today' => $today, 'days' => $days, 'totals' => $totals]);
-exit;
+api_ok(['from' => $from, 'to' => $to, 'today' => $today, 'days' => $days, 'totals' => $totals]);

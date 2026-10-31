@@ -4,16 +4,15 @@
  * Сессия хранит id пользователя, язык и выбранный отель. Роли при каждом запросе
  * читаются из базы (tenancy.php), поэтому изменения в админке действуют сразу.
  *
- * «Запомнить меня»: cookie hotelapp_remember = «selector:validator», в auth_tokens
+ * «Запомнить меня»: cookie hm_remember = «selector:validator», в auth_tokens
  * лежит только sha256 от validator. Cookie живёт APP_REMEMBER_DAYS дней и продлевается.
  *
  * В API обычно нужен не этот файл, а tenancy.php:  $me = app_require(['head']);
  */
 require_once __DIR__ . '/db.php';
 
-const APP_LANGS = ['ru', 'en', 'he', 'ar'];
-const APP_REMEMBER_COOKIE = 'hotelapp_remember';
-const APP_SESSION_NAME = 'HOTELAPPSESS';
+const APP_REMEMBER_COOKIE = 'hm_remember';
+const APP_SESSION_NAME = 'HMSESS';
 const APP_REMEMBER_DAYS = 180;
 // Без «Запомнить меня»: сколько держать сессию без действий (сек)
 const APP_SESSION_IDLE = 12 * 3600;
@@ -21,7 +20,7 @@ const APP_SESSION_IDLE = 12 * 3600;
 function app_is_https(): bool
 {
     if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
-    // Cloudflare Tunnel приходит в Apache по http, но сообщает исходный протокол
+    // Cloudflare Tunnel приходит на сервер по http, но сообщает исходный протокол
     if (strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') return true;
     return strpos($_SERVER['HTTP_CF_VISITOR'] ?? '', '"https"') !== false;
 }
@@ -41,7 +40,7 @@ function app_session_start(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) return;
 
-    // Свои файлы сессий: общий C:\xampp\tmp чистят другие сайты XAMPP со своим сроком
+    // Свои файлы сессий: общую папку чистят другие сайты сервера со своим сроком
     $dir = __DIR__ . '/../sessions';
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
     if (is_dir($dir) && is_writable($dir)) session_save_path($dir);
@@ -57,9 +56,29 @@ function app_session_start(): void
     session_start();
 }
 
+/** Включённые языки системы: [code => строка languages], по порядку. */
+function app_languages(): array
+{
+    static $langs = null;
+    if ($langs === null) {
+        $langs = [];
+        foreach (db_all("SELECT code, name, native_name, is_rtl FROM languages WHERE is_active ORDER BY sort_order, code") as $l) {
+            $langs[$l['code']] = $l;
+        }
+        if (!$langs) $langs = ['en' => ['code' => 'en', 'name' => 'English', 'native_name' => 'English', 'is_rtl' => false]];
+    }
+    return $langs;
+}
+
+function app_lang_codes(): array
+{
+    return array_keys(app_languages());
+}
+
 function app_normalize_lang($lang): string
 {
-    return in_array($lang, APP_LANGS, true) ? $lang : 'ru';
+    $codes = app_lang_codes();
+    return is_string($lang) && in_array($lang, $codes, true) ? $lang : (in_array('en', $codes, true) ? 'en' : $codes[0]);
 }
 
 function app_password_ok(string $password, string $stored): bool
@@ -73,13 +92,8 @@ function app_password_ok(string $password, string $stored): bool
 /** Пользователь по id, только действующий. */
 function app_load_user(int $id): ?array
 {
-    global $db;
-    $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
-    $stmt->bind_param('i', $id);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    if (!$row || (int)$row['active'] !== 1) return null;
+    $row = db_one("SELECT * FROM users WHERE id = ?", [$id]);
+    if (!$row || !$row['active']) return null;
     return $row;
 }
 
@@ -102,7 +116,6 @@ function app_clear_remember_cookie(): void
 /** Вход по cookie «Запомнить меня». Возвращает [user_id, lang, hotel_id] или null. */
 function app_restore_from_cookie(): ?array
 {
-    global $db;
     $parts = app_read_remember_cookie();
     if (!$parts) {
         app_clear_remember_cookie();
@@ -110,12 +123,8 @@ function app_restore_from_cookie(): ?array
     }
     [$selector, $validator] = $parts;
 
-    $stmt = $db->prepare("SELECT id, validator_hash, user_id, lang, hotel_id FROM auth_tokens
-                          WHERE selector = ? AND expires_at > NOW()");
-    $stmt->bind_param('s', $selector);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    $row = db_one("SELECT id, validator_hash, user_id, lang, hotel_id FROM auth_tokens
+                   WHERE selector = ? AND expires_at > NOW()", [$selector]);
 
     if (!$row || !hash_equals($row['validator_hash'], hash('sha256', $validator))) {
         app_clear_remember_cookie();
@@ -124,11 +133,7 @@ function app_restore_from_cookie(): ?array
 
     // Скользящий срок: пока человек пользуется приложением, вход не истекает
     $days = APP_REMEMBER_DAYS;
-    $stmt = $db->prepare("UPDATE auth_tokens SET last_used_at = NOW(),
-                          expires_at = DATE_ADD(NOW(), INTERVAL $days DAY) WHERE id = ?");
-    $stmt->bind_param('i', $row['id']);
-    $stmt->execute();
-    $stmt->close();
+    db_exec("UPDATE auth_tokens SET last_used_at = NOW(), expires_at = NOW() + make_interval(days => ?) WHERE id = ?", [$days, $row['id']]);
     setcookie(APP_REMEMBER_COOKIE, $selector . ':' . $validator, app_cookie_options(time() + $days * 86400));
 
     return [(int)$row['user_id'], app_normalize_lang($row['lang']), $row['hotel_id'] !== null ? (int)$row['hotel_id'] : null];
@@ -144,7 +149,7 @@ function app_session_user(bool $keepOpen = false): ?array
     app_session_start();
 
     $uid     = (int)($_SESSION['uid'] ?? 0);
-    $lang    = $_SESSION['lang'] ?? 'ru';
+    $lang    = $_SESSION['lang'] ?? null;
     $hotelId = isset($_SESSION['hotel_id']) ? (int)$_SESSION['hotel_id'] : null;
 
     if ($uid === 0 && isset($_COOKIE[APP_REMEMBER_COOKIE])) {
@@ -183,28 +188,19 @@ function app_json_fail(int $code, string $message, array $extra = []): void
 /** Проверка логина и пароля. Пароль открытым текстом (из Ramada) при удачном входе заменяется хэшем. */
 function app_check_password(string $login, string $password): ?array
 {
-    global $db;
-    $stmt = $db->prepare("SELECT * FROM users WHERE login = ?");
-    $stmt->bind_param('s', $login);
-    $stmt->execute();
-    $user = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    if (!$user || (int)$user['active'] !== 1) return null;
+    // Логин без учёта регистра (уникальный индекс по lower(login))
+    $user = db_one("SELECT * FROM users WHERE lower(login) = lower(?)", [$login]);
+    if (!$user || !$user['active']) return null;
     if (!app_password_ok($password, (string)$user['password_hash'])) return null;
 
     if (!preg_match('/^\$2[aby]\$|^\$argon2/', (string)$user['password_hash'])) {
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
-        $stmt->bind_param('si', $hash, $user['id']);
-        $stmt->execute();
-        $stmt->close();
+        db_exec("UPDATE users SET password_hash = ? WHERE id = ?", [password_hash($password, PASSWORD_DEFAULT), $user['id']]);
     }
     return $user;
 }
 
 function app_login(int $userId, string $lang, bool $remember, ?int $hotelId): void
 {
-    global $db;
     $lang = app_normalize_lang($lang);
 
     app_session_start();
@@ -222,14 +218,11 @@ function app_login(int $userId, string $lang, bool $remember, ?int $hotelId): vo
         $hash      = hash('sha256', $validator);
         $ua        = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
         $days      = APP_REMEMBER_DAYS;
-        $stmt = $db->prepare("INSERT INTO auth_tokens (selector, validator_hash, user_id, lang, hotel_id, user_agent, expires_at)
-                              VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL $days DAY))");
-        $stmt->bind_param('ssisis', $selector, $hash, $userId, $lang, $hotelId, $ua);
-        $stmt->execute();
-        $stmt->close();
+        db_exec("INSERT INTO auth_tokens (selector, validator_hash, user_id, lang, hotel_id, user_agent, expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW() + make_interval(days => ?))", [$selector, $hash, $userId, $lang, $hotelId, $ua, $days]);
         setcookie(APP_REMEMBER_COOKIE, $selector . ':' . $validator, app_cookie_options(time() + $days * 86400));
         // Заодно чистим просроченные токены
-        $db->query("DELETE FROM auth_tokens WHERE expires_at < NOW()");
+        db_exec("DELETE FROM auth_tokens WHERE expires_at < NOW()");
     }
     session_write_close();
 }
@@ -237,25 +230,15 @@ function app_login(int $userId, string $lang, bool $remember, ?int $hotelId): vo
 /** Удаляет токен «Запомнить меня» этого устройства (из базы и cookie). */
 function app_forget_device_token(): void
 {
-    global $db;
     $parts = app_read_remember_cookie();
-    if ($parts) {
-        $stmt = $db->prepare("DELETE FROM auth_tokens WHERE selector = ?");
-        $stmt->bind_param('s', $parts[0]);
-        $stmt->execute();
-        $stmt->close();
-    }
+    if ($parts) db_exec("DELETE FROM auth_tokens WHERE selector = ?", [$parts[0]]);
     app_clear_remember_cookie();
 }
 
 /** Выйти на всех устройствах: после смены пароля или блокировки. */
 function app_forget_user_tokens(int $userId): void
 {
-    global $db;
-    $stmt = $db->prepare("DELETE FROM auth_tokens WHERE user_id = ?");
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-    $stmt->close();
+    db_exec("DELETE FROM auth_tokens WHERE user_id = ?", [$userId]);
 }
 
 function app_logout(): void
@@ -277,7 +260,6 @@ function app_logout(): void
 /** Запоминает в сессии и в токене этого устройства язык и/или отель. */
 function app_session_set(?string $lang = null, ?int $hotelId = null): void
 {
-    global $db;
     app_session_start();
     if ($lang !== null) $_SESSION['lang'] = app_normalize_lang($lang);
     if ($hotelId !== null) $_SESSION['hotel_id'] = $hotelId;
@@ -285,17 +267,6 @@ function app_session_set(?string $lang = null, ?int $hotelId = null): void
 
     $parts = app_read_remember_cookie();
     if (!$parts) return;
-    if ($lang !== null) {
-        $l = app_normalize_lang($lang);
-        $stmt = $db->prepare("UPDATE auth_tokens SET lang = ? WHERE selector = ?");
-        $stmt->bind_param('ss', $l, $parts[0]);
-        $stmt->execute();
-        $stmt->close();
-    }
-    if ($hotelId !== null) {
-        $stmt = $db->prepare("UPDATE auth_tokens SET hotel_id = ? WHERE selector = ?");
-        $stmt->bind_param('is', $hotelId, $parts[0]);
-        $stmt->execute();
-        $stmt->close();
-    }
+    if ($lang !== null) db_exec("UPDATE auth_tokens SET lang = ? WHERE selector = ?", [app_normalize_lang($lang), $parts[0]]);
+    if ($hotelId !== null) db_exec("UPDATE auth_tokens SET hotel_id = ? WHERE selector = ?", [$hotelId, $parts[0]]);
 }

@@ -1,5 +1,6 @@
 <?php
-// Счётчики (регламентные задачи с распознаванием, routine_tasks.requires_ocr = 1):
+require_once __DIR__ . '/translate.php';
+// Счётчики (регламентные задачи с распознаванием, routine_tasks.requires_ocr):
 // общий код для страницы загрузки фото, отчёта начальника и выгрузки в Excel.
 
 // Накопительный счётчик (растёт всё время, расход = разница показаний) или уровень (газ в баке, давление)
@@ -27,31 +28,19 @@ function meter_number($raw): ?float
     return is_numeric($s) ? (float)$s : null;
 }
 
-function app_valid_date(?string $d): ?string
-{
-    if (!$d || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) return null;
-    [$y, $m, $day] = array_map('intval', explode('-', $d));
-    return checkdate($m, $day, $y) ? $d : null;
-}
-
 // Все счётчики: [id => ['id','name','ocr_type','unit','kind']]
-function meter_tasks(mysqli $db, int $hotelId, string $lang = 'ru'): array
+function meter_tasks(PDO $db, int $hotelId, string $lang = 'en'): array
 {
-    if (!in_array($lang, ['ru', 'en', 'he', 'ar'], true)) $lang = 'ru';
-    $nameCol = 'name_' . $lang;
     $out = [];
-    $res = $db->query("SELECT id, COALESCE(NULLIF($nameCol, ''), name_ru, 'Счётчик') AS name, ocr_type
-                       FROM routine_tasks WHERE hotel_id = $hotelId AND requires_ocr = 1 ORDER BY sort_order ASC, id ASC");
-    if ($res) {
-        while ($r = $res->fetch_assoc()) {
-            $out[(int)$r['id']] = [
-                'id'       => (int)$r['id'],
-                'name'     => $r['name'],
-                'ocr_type' => $r['ocr_type'],
-                'unit'     => meter_unit($r['ocr_type']),
-                'kind'     => meter_kind($r['ocr_type']),
-            ];
-        }
+    foreach (db_all("SELECT id, names, ocr_type FROM routine_tasks WHERE hotel_id = ? AND requires_ocr
+                     ORDER BY sort_order ASC, id ASC", [$hotelId]) as $r) {
+        $out[(int)$r['id']] = [
+            'id'       => (int)$r['id'],
+            'name'     => i18n_pick($r['names'], $lang) ?: '#' . $r['id'],
+            'ocr_type' => $r['ocr_type'],
+            'unit'     => meter_unit($r['ocr_type']),
+            'kind'     => meter_kind($r['ocr_type']),
+        ];
     }
     return $out;
 }
@@ -73,18 +62,17 @@ function meter_photo($mediaJson): ?string
 // Источник — routine_log (каждое закрытие/загрузка со временем). Дни, где в истории показаний нет,
 // а в routine_schedule есть (старые записи), берутся оттуда как одно показание в 12:00.
 // Каждое: ['id' => 'l123'|'s45', 'date', 'time', 'at' => 'Y-m-d H:i', 'value', 'photo', 'notes']
-function meter_readings(mysqli $db, int $taskId, string $from, string $to): array
+function meter_readings(PDO $db, int $taskId, string $from, string $to): array
 {
-    $fromEsc = $db->real_escape_string($from);
-    $toEsc   = $db->real_escape_string($to);
     $out = [];
     $logDays = [];
     // Несколько записей истории на одну и ту же минуту — это повторная запись того же показания
     // (раньше «Записать в базу» на тот же день заменял значение): берём последнюю из них.
-    $res = $db->query("SELECT id, target_date, closed_at, ocr_value, media, notes FROM routine_log
-                       WHERE task_id = $taskId AND target_date BETWEEN '$fromEsc' AND '$toEsc' ORDER BY id ASC");
+    // closed_at — в поясе отеля (app_apply_timezone), как местное время
     $byAt = [];
-    while ($res && $r = $res->fetch_assoc()) {
+    foreach (db_all("SELECT id, target_date::text AS target_date, to_char(closed_at, 'YYYY-MM-DD HH24:MI:SS') AS closed_at,
+                            ocr_value, media, notes FROM routine_log
+                     WHERE task_id = ? AND target_date BETWEEN ? AND ? ORDER BY id ASC", [$taskId, $from, $to]) as $r) {
         $closed = (string)$r['closed_at'];
         $time = substr($closed, 0, 10) === $r['target_date'] ? substr($closed, 11, 5) : '12:00';
         $at = $r['target_date'] . ' ' . $time;
@@ -102,10 +90,9 @@ function meter_readings(mysqli $db, int $taskId, string $from, string $to): arra
         $out[] = ['id' => 'l' . $r['id'], 'date' => $r['target_date'], 'time' => $r['time'], 'at' => $at,
                   'value' => $v, 'photo' => meter_photo($r['media']), 'notes' => $r['notes']];
     }
-    $res = $db->query("SELECT id, target_date, ocr_value, media, notes FROM routine_schedule
-                       WHERE task_id = $taskId AND target_date BETWEEN '$fromEsc' AND '$toEsc'
-                         AND ocr_value IS NOT NULL AND ocr_value <> ''");
-    while ($res && $r = $res->fetch_assoc()) {
+    foreach (db_all("SELECT id, target_date::text AS target_date, ocr_value, media, notes FROM routine_schedule
+                     WHERE task_id = ? AND target_date BETWEEN ? AND ?
+                       AND ocr_value IS NOT NULL AND ocr_value <> ''", [$taskId, $from, $to]) as $r) {
         if (isset($logDays[$r['target_date']])) continue;
         $v = meter_number($r['ocr_value']);
         if ($v === null) continue;
@@ -118,15 +105,13 @@ function meter_readings(mysqli $db, int $taskId, string $from, string $to): arra
 }
 
 // Последнее показание до даты $before (не включая)
-function meter_reading_before(mysqli $db, int $taskId, string $before): ?array
+function meter_reading_before(PDO $db, int $taskId, string $before): ?array
 {
-    $b = $db->real_escape_string($before);
-    $res = $db->query("SELECT MAX(d) AS d FROM (
-                           SELECT MAX(target_date) d FROM routine_log WHERE task_id = $taskId AND target_date < '$b' AND ocr_value IS NOT NULL AND ocr_value <> ''
-                           UNION ALL
-                           SELECT MAX(target_date) d FROM routine_schedule WHERE task_id = $taskId AND target_date < '$b' AND ocr_value IS NOT NULL AND ocr_value <> ''
-                       ) x");
-    $d = $res ? ($res->fetch_assoc()['d'] ?? null) : null;
+    $d = db_value("SELECT MAX(d)::text FROM (
+                       SELECT MAX(target_date) d FROM routine_log WHERE task_id = ? AND target_date < ? AND ocr_value IS NOT NULL AND ocr_value <> ''
+                       UNION ALL
+                       SELECT MAX(target_date) d FROM routine_schedule WHERE task_id = ? AND target_date < ? AND ocr_value IS NOT NULL AND ocr_value <> ''
+                   ) x", [$taskId, $before, $taskId, $before]);
     if (!$d) return null;
     $list = meter_readings($db, $taskId, $d, $d);
     return $list ? end($list) : null;
@@ -134,44 +119,34 @@ function meter_reading_before(mysqli $db, int $taskId, string $before): ?array
 
 // Если за день показание есть только в routine_schedule (старые записи без истории), переносим его в историю,
 // чтобы новое показание того же дня его не скрыло. Возвращает id созданной записи истории или null.
-function meter_materialize_day(mysqli $db, int $taskId, string $date): ?int
+function meter_materialize_day(PDO $db, int $taskId, string $date): ?int
 {
-    $d = $db->real_escape_string($date);
-    $res = $db->query("SELECT 1 FROM routine_log WHERE task_id = $taskId AND target_date = '$d' AND ocr_value IS NOT NULL AND ocr_value <> '' LIMIT 1");
-    if ($res && $res->fetch_assoc()) return null;
-    $res = $db->query("SELECT id, worker_id, ocr_value, ocr_unit, ocr_raw, media FROM routine_schedule
-                       WHERE task_id = $taskId AND target_date = '$d' AND ocr_value IS NOT NULL AND ocr_value <> '' LIMIT 1");
-    $s = $res ? $res->fetch_assoc() : null;
+    if (db_value("SELECT 1 FROM routine_log WHERE task_id = ? AND target_date = ? AND ocr_value IS NOT NULL AND ocr_value <> '' LIMIT 1",
+        [$taskId, $date])) return null;
+    $s = db_one("SELECT id, worker_id, ocr_value, ocr_unit, ocr_raw, media FROM routine_schedule
+                 WHERE task_id = ? AND target_date = ? AND ocr_value IS NOT NULL AND ocr_value <> '' LIMIT 1", [$taskId, $date]);
     if (!$s) return null;
-    $st = $db->prepare("INSERT INTO routine_log (hotel_id, schedule_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw, is_repeat, closed_at)
-                        VALUES ((SELECT hotel_id FROM routine_tasks WHERE id = $taskId), ?, ?, ?, ?, 'done', '[из регламента]', ?, ?, ?, ?, 0, ?)");
-    $sid = (int)$s['id']; $wid = $s['worker_id'] !== null ? (int)$s['worker_id'] : null; $at = "$date 12:00:00";
-    $st->bind_param('iiissssss', $sid, $taskId, $wid, $date, $s['media'], $s['ocr_value'], $s['ocr_unit'], $s['ocr_raw'], $at);
-    return $st->execute() ? (int)$db->insert_id : null;
+    return (int)db_value("INSERT INTO routine_log (hotel_id, schedule_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit, ocr_raw, is_repeat, closed_at)
+                          VALUES ((SELECT hotel_id FROM routine_tasks WHERE id = ?), ?, ?, ?, ?, 'done', '[из регламента]', ?, ?, ?, ?, false, ?::timestamp)
+                          RETURNING id",
+        [$taskId, (int)$s['id'], $taskId, $s['worker_id'], $date, $s['media'], $s['ocr_value'], $s['ocr_unit'], $s['ocr_raw'], "$date 12:00:00"]);
 }
 
 // После правки показаний за день: в routine_schedule (одна строка в сутки — её читают регламент и приложение работников)
 // кладём последнее за этот день показание из истории; нет показаний — значение очищаем.
-function meter_sync_day(mysqli $db, int $taskId, string $date, string $unit, int $workerId, string $mark): void
+function meter_sync_day(PDO $db, int $taskId, string $date, string $unit, int $workerId, string $mark): void
 {
-    $d = $db->real_escape_string($date);
-    $res = $db->query("SELECT ocr_value FROM routine_log WHERE task_id = $taskId AND target_date = '$d'
-                         AND ocr_value IS NOT NULL AND ocr_value <> '' ORDER BY closed_at DESC, id DESC LIMIT 1");
-    $last = $res ? ($res->fetch_assoc()['ocr_value'] ?? null) : null;
-    $res = $db->query("SELECT id FROM routine_schedule WHERE task_id = $taskId AND target_date = '$d' LIMIT 1");
-    $sid = $res ? ($res->fetch_assoc()['id'] ?? null) : null;
+    $last = db_value("SELECT ocr_value FROM routine_log WHERE task_id = ? AND target_date = ?
+                        AND ocr_value IS NOT NULL AND ocr_value <> '' ORDER BY closed_at DESC, id DESC LIMIT 1", [$taskId, $date]);
+    $sid = db_value("SELECT id FROM routine_schedule WHERE task_id = ? AND target_date = ? LIMIT 1", [$taskId, $date]);
     if ($sid) {
-        $st = $db->prepare("UPDATE routine_schedule SET ocr_value = ?, ocr_unit = ?" . ($last !== null ? ", status = 'done'" : '') . " WHERE id = ?");
-        $u = $last !== null ? $unit : null;
-        $st->bind_param('ssi', $last, $u, $sid);
-        $st->execute();
+        db_exec("UPDATE routine_schedule SET ocr_value = ?, ocr_unit = ?" . ($last !== null ? ", status = 'done'" : '') . " WHERE id = ?",
+            [$last, $last !== null ? $unit : null, $sid]);
     } elseif ($last !== null) {
-        $st = $db->prepare("INSERT INTO routine_schedule (hotel_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit)
-                            VALUES ((SELECT hotel_id FROM routine_tasks WHERE id = $taskId), ?, ?, ?, 'done', ?, '[]', ?, ?)");
-        $st->bind_param('iissss', $taskId, $workerId, $date, $mark, $last, $unit);
-        $st->execute();
-        $newId = (int)$db->insert_id;
-        $db->query("UPDATE routine_log SET schedule_id = $newId WHERE task_id = $taskId AND target_date = '$d' AND schedule_id IS NULL");
+        $newId = (int)db_value("INSERT INTO routine_schedule (hotel_id, task_id, worker_id, target_date, status, notes, media, ocr_value, ocr_unit)
+                                VALUES ((SELECT hotel_id FROM routine_tasks WHERE id = ?), ?, ?, ?, 'done', ?, '[]', ?, ?) RETURNING id",
+            [$taskId, $taskId, $workerId, $date, $mark, $last, $unit]);
+        db_exec("UPDATE routine_log SET schedule_id = ? WHERE task_id = ? AND target_date = ? AND schedule_id IS NULL", [$newId, $taskId, $date]);
     }
 }
 
@@ -179,7 +154,7 @@ function meter_sync_day(mysqli $db, int $taskId, string $date, string $unit, int
 // Для счётчика (counter): delta — прирост с прошлого показания; расход раскладывается по дням пропорционально времени.
 // Сомнительные показания (меньше последнего верного или выше следующего) помечаются anomaly и в расход не идут.
 // Для уровня (level, газ): delta — изменение уровня; расход = сумма падений, пополнения считаются отдельно.
-function meter_report(mysqli $db, array $meters, string $from, string $to): array
+function meter_report(PDO $db, array $meters, string $from, string $to): array
 {
     $result = [];
     $days = (int)round((strtotime($to) - strtotime($from)) / 86400) + 1;
@@ -282,30 +257,26 @@ function meter_report(mysqli $db, array $meters, string $from, string $to): arra
 // Ключ в ссылке даёт доступ ТОЛЬКО к отчёту и Excel по счётчикам (get_meter_report / export_meter_excel).
 // Ссылки создаёт и отключает сисадмин на странице «📷 Счётчики» (meter_link.php).
 
-function meter_links_table(mysqli $db): void
+function meter_links_table(PDO $db): void
 {
-    // таблицу создаёт db/schema.sql
+    // таблицу создаёт db/pg/01_schema.sql
 }
 
 // Действующая ссылка по ключу или null (с hotel_id — отчёт только этого отеля)
-function meter_link(mysqli $db, ?string $key): ?array
+function meter_link(PDO $db, ?string $key): ?array
 {
     if (!$key || !preg_match('/^[a-f0-9]{32}$/', $key)) return null;
-    meter_links_table($db);
-    $st = $db->prepare("SELECT l.id, l.label, l.lang, l.hotel_id, h.timezone FROM meter_report_links l
-                        JOIN hotels h ON h.id = l.hotel_id AND h.active = 1
-                        WHERE l.link_key = ? AND l.revoked = 0");
-    $st->bind_param('s', $key);
-    $st->execute();
-    $row = $st->get_result()->fetch_assoc();
+    $row = db_one("SELECT l.id, l.label, l.lang, l.hotel_id, h.timezone FROM meter_report_links l
+                   JOIN hotels h ON h.id = l.hotel_id AND h.active
+                   WHERE l.link_key = ? AND NOT l.revoked", [$key]);
     if (!$row) return null;
-    $db->query("UPDATE meter_report_links SET last_used_at = NOW() WHERE id = " . (int)$row['id']);
+    db_exec("UPDATE meter_report_links SET last_used_at = NOW() WHERE id = ?", [(int)$row['id']]);
     return $row;
 }
 
 // Пускает по ключу из ссылки (?key=…) или вошедшего руководителя / администратора / наблюдателя сети.
 // Возвращает id отеля, по которому строится отчёт.
-function meter_require_access(mysqli $db): int
+function meter_require_access(PDO $db): int
 {
     $key = $_GET['key'] ?? null;
     if ($key !== null && $key !== '') {

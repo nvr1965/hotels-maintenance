@@ -1,14 +1,15 @@
 <?php
-/* Скопируйте этот файл в config.local.php и поправьте под свой сервер.
- * config.local.php в пакеты обновлений не входит и при установке не заменяется.
- * Без config.local.php действуют значения ниже (обычный XAMPP: root без пароля).
+/* Скопируйте этот файл в config.local.php и впишите пароль базы.
+ * config.local.php в git и в пакеты не входит (setup_server.sh создаёт его сам).
  */
 return [
+    // PostgreSQL
     'db' => [
-        'host' => 'localhost',
-        'user' => 'root',
+        'host' => '127.0.0.1',
+        'port' => 5432,
+        'name' => 'hotels',
+        'user' => 'hotels',
         'pass' => '',
-        'name' => 'hotelapp',
     ],
     // Адрес сайта: контакт для уведомлений (Google/Apple)
     'site_url' => 'https://hotel.example.com',

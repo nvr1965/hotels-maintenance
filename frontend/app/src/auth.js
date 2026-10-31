@@ -2,7 +2,6 @@
 // В браузере храним только копию данных пользователя (имя, роль, язык) — для pwa.js
 // и чтобы без сети показать интерфейс последнего вошедшего. Решает всегда сервер.
 
-export const LANGS = ['ru', 'en', 'he', 'ar'];
 const CACHE_KEY = 'hotelapp_user';
 
 export function readCachedUser() {

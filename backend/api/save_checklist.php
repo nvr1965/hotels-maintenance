@@ -6,7 +6,6 @@
 require_once __DIR__ . '/../core/api.php';
 $me = app_require();
 $hid = $me['hotel_id'];
-require_once __DIR__ . '/../core/translator.php';
 api_require_post();
 
 $task_id = (int)($_POST['task_id'] ?? 0);
@@ -20,8 +19,9 @@ if (isset($_POST['status'])) {
 }
 
 if (isset($_POST['comment'])) {
-    $langs = (new Translator())->translateToAll((string)$_POST['comment']);
-    db_exec("UPDATE task_room_checks SET comment_ru = ?, comment_en = ?, comment_he = ?, comment_ar = ?
-             WHERE task_id = ? AND check_id = ?", [$langs['ru'], $langs['en'], $langs['he'], $langs['ar'], $task_id, $check_id]);
+    // Комментарий хранится на языке автора; другим он переводится при показе (перевод на лету)
+    $text = trim((string)$_POST['comment']);
+    db_exec("UPDATE task_room_checks SET comment = ?, comment_lang = ? WHERE task_id = ? AND check_id = ?",
+        [$text === '' ? [] : [$me['lang'] => $text], $text === '' ? null : $me['lang'], $task_id, $check_id]);
 }
 api_ok();
