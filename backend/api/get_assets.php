@@ -9,7 +9,7 @@ $lblBldg = ui_t('bldg', $lang);
 $lblFloor = ui_t('floor', $lang);
 
 $locations = [];
-foreach (db_all("SELECT a.id, a.building, a.floor, a.asset_key, d.names
+foreach (db_all("SELECT a.id, a.building, a.floor, a.asset_key, d.names, d.kind, d.icon
                  FROM hotel_assets a
                  LEFT JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND a.asset_key = d.term_key
                  WHERE a.hotel_id = ? ORDER BY a.id ASC", [$hid]) as $row) {
@@ -27,6 +27,8 @@ foreach (db_all("SELECT a.id, a.building, a.floor, a.asset_key, d.names
         'building' => $building,
         'floor' => $floor,
         'is_room' => $isRoom ? 1 : 0,
+        'is_facility' => $row['kind'] === 'facility' ? 1 : 0,   // зона отеля: ресторан, бар, бассейн…
+        'icon' => $row['kind'] === 'facility' ? ($row['icon'] ?: '📍') : null,
     ];
 }
 api_ok(['locations' => $locations]);

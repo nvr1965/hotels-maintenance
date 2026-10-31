@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { tr, trNs, api, errText, S, Message, Ic } from './adminUi';
 
-// Админка → Шаблоны (только владелец системы): структура отеля — корпуса, этажи, номера, общие объекты.
+// Админка → Шаблоны (только владелец системы): структура отеля — корпуса, этажи, номера, общие объекты
+// и зоны (ресторан, бар, бассейн…).
 // При создании отеля («Сеть и отели») выбирается шаблон, и все объекты заводятся сразу;
 // дальше отель правится сам по себе. Шаблон можно начать с готового отеля.
 
 const API = '/backend/api/admin_templates.php';
 const blankBuilding = (name = '') => ({ name, floor_from: 1, floor_to: 3, room_from: 1, room_to: 3, rooms_per_floor: 10 });
-export const blankStructure = () => ({ numbering: 'floor', buildings: [blankBuilding('A')], common: [] });
+export const blankStructure = () => ({ numbering: 'floor', buildings: [blankBuilding('A')], common: [], facilities: [] });
+const FAC_GROUPS = ['food', 'leisure', 'service', 'technical'];
 const blank = () => ({ id: 0, name: '', structure: blankStructure() });
 
 export default function AdminTemplates({ lang }) {
@@ -73,7 +75,7 @@ export default function AdminTemplates({ lang }) {
                         <div style={{ fontSize: '28px', color: 'var(--accent)' }}><Ic n="table" /></div>
                         <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                             <b style={{ fontSize: '17px', color: '#2b2320' }}>{x.name}</b>
-                            <div className="ad-hint">{t.summary(x.summary.buildings, x.summary.rooms, x.summary.common)}</div>
+                            <div className="ad-hint">{t.summary_full(x.summary.buildings, x.summary.rooms, x.summary.common, x.summary.facilities)}</div>
                             <div className="ad-hint" style={{ fontSize: '13px' }}>
                                 {x.structure.buildings.map(b => `${b.name || '—'}: ${t.floors_short(b.floor_from, b.floor_to)}`).join(' · ')}
                             </div>
@@ -111,7 +113,12 @@ function TemplateForm({ t, lang, form, setForm, busy, onSubmit, onCancel }) {
  *  Общая для шаблона и для нового отеля («Сеть и отели»). setStructure(fn) — fn(старая) → новая. */
 export function StructureEditor({ t, lang, structure: st, setStructure, onPreview }) {
     const setSt = (patch) => setStructure(s => ({ ...s, ...patch }));
-    const setB = (i, k, v) => setStructure(s => ({ ...s, buildings: s.buildings.map((b, n) => (n === i ? { ...b, [k]: v } : b)) }));
+    // Переименовали корпус — зоны в нём переезжают вместе с ним
+    const setB = (i, k, v) => setStructure(s => ({
+        ...s,
+        buildings: s.buildings.map((b, n) => (n === i ? { ...b, [k]: v } : b)),
+        facilities: k === 'name' ? (s.facilities || []).map(f => (f.building === s.buildings[i].name ? { ...f, building: v } : f)) : s.facilities,
+    }));
     const setC = (i, patch) => setStructure(s => ({ ...s, common: s.common.map((c, n) => (n === i ? { ...c, ...patch } : c)) }));
     const num = (v) => (v === '' || v === '-' ? v : Number(v));
 
@@ -165,7 +172,7 @@ export function StructureEditor({ t, lang, structure: st, setStructure, onPrevie
                                     </td>
                                     <td style={S.td}><input style={cell} type="number" min={0} max={500} value={b.rooms_per_floor} onChange={e => setB(i, 'rooms_per_floor', num(e.target.value))} /></td>
                                     <td style={S.td}>
-                                        {st.buildings.length > 1 && <button type="button" className="ad-btn danger" onClick={() => setSt({ buildings: st.buildings.filter((_, n) => n !== i) })}><Ic n="trash" /></button>}
+                                        {st.buildings.length > 1 && <button type="button" className="ad-btn danger" onClick={() => setSt({ buildings: st.buildings.filter((_, n) => n !== i), facilities: (st.facilities || []).map(f => (f.building === b.name ? { ...f, building: '', floor: '' } : f)) })}><Ic n="trash" /></button>}
                                     </td>
                                 </tr>
                             ))}
@@ -196,11 +203,13 @@ export function StructureEditor({ t, lang, structure: st, setStructure, onPrevie
                 </div>
             </div>
 
+            <FacilitiesEditor t={t} lang={lang} st={st} setStructure={setStructure} />
+
             {preview && (
                 <div role="status" className="ad-card" style={{ background: preview.success ? '#eef6f0' : '#fdecea', color: preview.success ? '#1f6b3d' : '#a3301c', fontWeight: 600 }}>
                     {preview.success ? (
                         <>
-                            {t.result(preview.summary.rooms, preview.summary.common)}
+                            {t.result_full(preview.summary.rooms, preview.summary.common, preview.summary.facilities)}
                             <div style={{ fontWeight: 400, fontSize: '14px', marginTop: '4px' }}>
                                 {preview.summary.sample.filter(s => s.first.length).map(s => `${s.building || '—'}: ${s.first.join(', ')} … ${s.last}`).join(' · ')}
                             </div>
@@ -210,5 +219,71 @@ export function StructureEditor({ t, lang, structure: st, setStructure, onPrevie
             )}
 
         </>
+    );
+}
+
+/** Зоны отеля: ресторан, бар, бассейн… Плашки каталога добавляют зону, у каждой — место (корпус и этаж или территория). */
+function FacilitiesEditor({ t, lang, st, setStructure }) {
+    const at = tr(lang);
+    const [cat, setCat] = useState(null);
+    const [custom, setCustom] = useState('');
+    useEffect(() => {
+        api(`${API}?action=catalog&lang=${lang}`).then(d => d.success && setCat(d));
+    }, [lang]);
+    const list = st.facilities || [];
+    const setList = (fn) => setStructure(s => ({ ...s, facilities: fn(s.facilities || []) }));
+    const setF = (i, patch) => setList(l => l.map((f, n) => (n === i ? { ...f, ...patch } : f)));
+    const firstFloor = (b) => (b ? Math.max(b.floor_from, Math.min(1, b.floor_to)) : '');
+    const add = (f) => {
+        const b = f.outdoor ? null : st.buildings[0];
+        setList(l => [...l, { key: f.key || '', names: f.names, icon: f.icon || '📍', building: b ? b.name : '', floor: firstFloor(b) }]);
+    };
+    const nameOf = (f) => f.names?.[lang] ?? cat?.catalog.find(c => c.key === f.key)?.name ?? f.names?.en ?? Object.values(f.names || {})[0] ?? f.key;
+    const used = new Set(list.map(f => f.key));
+    return (
+        <div className="ad-lab">{t.facilities}
+            <div className="ad-hint" style={{ fontWeight: 400 }}>{t.facilities_hint}</div>
+            {cat && FAC_GROUPS.map(g => (
+                <div key={g} style={{ fontWeight: 400 }}>
+                    <div className="ad-hint" style={{ fontSize: '13px' }}>{at['fac_group_' + g]}</div>
+                    <div className="ad-chips">
+                        {cat.catalog.filter(c => c.group === g).map(c => (
+                            <button key={c.key} type="button" className={'ad-chp sm' + (used.has(c.key) ? ' on' : '')} onClick={() => add(c)}>
+                                <span aria-hidden="true">{c.icon}</span> {c.name}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            ))}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontWeight: 400 }}>
+                <input className="ad-fld" style={{ flex: '1 1 220px', width: 'auto' }} value={custom} placeholder={t.facility_custom_ph}
+                    onChange={e => setCustom(e.target.value)} />
+                <button type="button" className="ad-btn" disabled={!custom.trim()}
+                    onClick={() => { add({ names: { [lang]: custom.trim() } }); setCustom(''); }}>{t.add_facility}</button>
+            </div>
+            {list.map((f, i) => {
+                const b = st.buildings.find(x => x.name === f.building);
+                return (
+                    <div key={i} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', fontWeight: 400 }}>
+                        <select className="ad-fld" style={{ width: 'auto' }} value={f.icon} aria-label={at.facility_icon} onChange={e => setF(i, { icon: e.target.value })}>
+                            {[...new Set([f.icon, ...(cat?.icons || [])])].map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                        </select>
+                        <b style={{ flex: '1 1 140px' }}><bdi>{nameOf(f)}</bdi></b>
+                        <select className="ad-fld" style={{ width: 'auto' }} value={f.building} aria-label={at.facility_place}
+                            onChange={e => { const nb = st.buildings.find(x => x.name === e.target.value); setF(i, { building: e.target.value, floor: firstFloor(nb) }); }}>
+                            <option value="">{t.territory}</option>
+                            {st.buildings.map(x => <option key={x.name} value={x.name}>{at.building} {x.name || '—'}</option>)}
+                        </select>
+                        {b && (
+                            <label style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>{t.floor}
+                                <input className="ad-fld" style={{ width: '76px' }} type="number" min={b.floor_from} max={b.floor_to} value={f.floor}
+                                    onChange={e => setF(i, { floor: e.target.value === '' || e.target.value === '-' ? e.target.value : Number(e.target.value) })} />
+                            </label>
+                        )}
+                        <button type="button" className="ad-btn danger" aria-label={at.delete} onClick={() => setList(l => l.filter((_, n) => n !== i))}><Ic n="trash" /></button>
+                    </div>
+                );
+            })}
+        </div>
     );
 }

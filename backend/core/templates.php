@@ -9,8 +9,11 @@
  *               room_from..room_to — этажи с номерами (внутри floor_from..floor_to)
  *   common      [{names: {язык: текст}, where: 'all' | 'rooms'}] — общий объект на каждом этаже
  *               (all — на всех этажах корпуса, rooms — только на этажах с номерами)
+ *   facilities  [{key, names: {язык: текст}, icon, building, floor}] — зоны отеля (ресторан, бар, бассейн…),
+ *               каждая в одном месте: корпус и этаж или территория (building = '', floor = '')
  */
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/facilities.php';
 
 const TPL_MAX_ASSETS = 5000;
 
@@ -44,9 +47,53 @@ function tpl_normalize($s): array
         if (!$names) continue;
         $common[] = ['names' => $names, 'where' => ($c['where'] ?? 'all') === 'rooms' ? 'rooms' : 'all'];
     }
-    $out = ['numbering' => $num, 'buildings' => $buildings, 'common' => $common];
+    $facilities = [];
+    $bByName = array_column($buildings, null, 'name');
+    foreach (is_array($s['facilities'] ?? null) ? $s['facilities'] : [] as $f) {
+        $names = [];
+        foreach (is_array($f['names'] ?? null) ? $f['names'] : [] as $l => $v) {
+            $v = clean_text((string)$v, 80);
+            if ($v !== '') $names[(string)$l] = $v;
+        }
+        $cat = facility_find((string)($f['key'] ?? ''));
+        if ($cat) $names += $cat['names'];
+        if (!$names) continue;
+        $key = clean_text((string)($f['key'] ?? ''), 80) ?: ($names['en'] ?? reset($names));
+        if (preg_match('/^[0-9]+$/', $key)) api_fail('bad_facility', ['building' => $key]);
+        $b = clean_text((string)($f['building'] ?? ''), 40);
+        $floor = '';
+        if ($b !== '') {
+            if (!isset($bByName[$b])) api_fail('facility_building', ['building' => $b]);
+            $floor = (int)($f['floor'] ?? $bByName[$b]['floor_from']);
+            if ($floor < $bByName[$b]['floor_from'] || $floor > $bByName[$b]['floor_to']) api_fail('facility_floor', ['building' => $b]);
+            $floor = (string)$floor;
+        }
+        $facilities[] = ['key' => $key, 'names' => $names, 'icon' => facility_icon($f['icon'] ?? null) ?? ($cat['icon'] ?? '📍'),
+            'building' => $b, 'floor' => $floor];
+    }
+    $out = ['numbering' => $num, 'buildings' => $buildings, 'common' => $common, 'facilities' => $facilities];
     if (count(tpl_assets($out)) > TPL_MAX_ASSETS) api_fail('too_many_assets', ['max' => TPL_MAX_ASSETS]);
     return $out;
+}
+
+/** Дописать английские названия общим объектам и своим зонам: по английскому названию объект связан
+ *  со справочником названий отеля (term_key). Переводит, поэтому только при сохранении, не в preview. */
+function tpl_with_en(array $st, string $lang): array
+{
+    foreach ($st['common'] as &$c) {
+        if (isset($c['names']['en'])) continue;
+        $src = isset($c['names'][$lang]) ? $lang : array_key_first($c['names']);
+        $c['names'] = i18n_complete($c['names'], ['en'], $src);
+    }
+    unset($c);
+    foreach ($st['facilities'] as &$f) {
+        if (isset($f['names']['en'])) continue;
+        $src = isset($f['names'][$lang]) ? $lang : array_key_first($f['names']);
+        $f['names'] = i18n_complete($f['names'], ['en'], $src);
+        if (!facility_find($f['key']) && isset($f['names']['en'])) $f['key'] = $f['names']['en'];
+    }
+    unset($f);
+    return $st;
 }
 
 /** Номер комнаты: этаж + номер на этаже (101, 102… при 100 и больше номерах на этаже — 1001…),
@@ -80,10 +127,11 @@ function tpl_assets(array $s): array
             }
         }
     }
+    foreach ($s['facilities'] ?? [] as $f) $out[] = [$f['building'], $f['floor'], $f['key']];
     return $out;
 }
 
-/** Завести объекты отеля по шаблону (существующие пропускаются). → ['rooms' => n, 'common' => n, 'skipped' => n] */
+/** Завести объекты отеля по шаблону (существующие пропускаются). → ['rooms' => n, 'common' => n, 'facilities' => n, 'skipped' => n] */
 function tpl_apply(int $hotelId, array $s): array
 {
     // Общие объекты — в справочник названий; недостающие языки отеля допишет i18n_fill_hotel
@@ -91,17 +139,22 @@ function tpl_apply(int $hotelId, array $s): array
         db_exec("INSERT INTO asset_dictionary (hotel_id, term_key, names) VALUES (?, ?, ?) ON CONFLICT (hotel_id, term_key) DO NOTHING",
             [$hotelId, tpl_common_key($c), json_encode($c['names'], JSON_UNESCAPED_UNICODE)]);
     }
+    $facilityKeys = [];
+    foreach ($s['facilities'] ?? [] as $f) {
+        facility_ensure($hotelId, $f['key'], $f['names'], $f['icon']);
+        $facilityKeys[$f['key']] = true;
+    }
     $have = [];
     foreach (db_all("SELECT COALESCE(building, '') AS b, COALESCE(floor, '') AS f, asset_key FROM hotel_assets WHERE hotel_id = ?", [$hotelId]) as $r) {
         $have[$r['b'] . "\0" . $r['f'] . "\0" . $r['asset_key']] = true;
     }
-    $n = ['rooms' => 0, 'common' => 0, 'skipped' => 0];
+    $n = ['rooms' => 0, 'common' => 0, 'facilities' => 0, 'skipped' => 0];
     global $db;
     $ins = $db->prepare("INSERT INTO hotel_assets (hotel_id, building, floor, asset_key) VALUES (?, ?, ?, ?)");
     foreach (tpl_assets($s) as [$b, $f, $key]) {
         if (isset($have["$b\0$f\0$key"])) { $n['skipped']++; continue; }
         $ins->execute([$hotelId, $b, $f, $key]);
-        $n[preg_match('/^[0-9]+$/', $key) ? 'rooms' : 'common']++;
+        $n[preg_match('/^[0-9]+$/', $key) ? 'rooms' : (isset($facilityKeys[$key]) ? 'facilities' : 'common')]++;
     }
     return $n;
 }
@@ -110,9 +163,17 @@ function tpl_apply(int $hotelId, array $s): array
  *  общие объекты — те, что есть хотя бы на половине этажей корпуса. Дальше его можно поправить. */
 function tpl_from_hotel(int $hotelId): array
 {
+    // Зоны — как есть, со своим местом; в корпуса и общие объекты они не идут
+    $facilities = [];
+    foreach (db_all("SELECT a.building, a.floor, a.asset_key, d.names, d.icon FROM hotel_assets a
+                     JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND d.term_key = a.asset_key AND d.kind = 'facility'
+                     WHERE a.hotel_id = ? ORDER BY a.id", [$hotelId]) as $r) {
+        $facilities[] = ['key' => $r['asset_key'], 'names' => db_json($r['names']), 'icon' => $r['icon'] ?: '📍',
+            'building' => (string)($r['building'] ?? ''), 'floor' => (string)($r['floor'] ?? '')];
+    }
     $rows = db_all("SELECT a.building, a.floor, a.asset_key, d.names FROM hotel_assets a
                     LEFT JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND d.term_key = a.asset_key
-                    WHERE a.hotel_id = ? AND a.floor ~ '^-?[0-9]+$'", [$hotelId]);
+                    WHERE a.hotel_id = ? AND a.floor ~ '^-?[0-9]+$' AND d.kind IS DISTINCT FROM 'facility'", [$hotelId]);
     $byB = [];
     foreach ($rows as $r) $byB[(string)($r['building'] ?? '')][] = $r;
     ksort($byB, SORT_NATURAL);
@@ -154,5 +215,8 @@ function tpl_from_hotel(int $hotelId): array
         'numbering' => $floorKeyed && $floorMatch * 2 >= $floorKeyed ? 'floor' : 'sequential',
         'buildings' => $buildings ?: [['name' => '', 'floor_from' => 1, 'floor_to' => 1, 'room_from' => 1, 'room_to' => 1, 'rooms_per_floor' => 0]],
         'common' => $common,
+        // зона в корпусе, которого в шаблоне нет (корпус без этажей-чисел), уходит на территорию
+        'facilities' => array_map(fn($f) => in_array($f['building'], array_column($buildings, 'name'), true) && preg_match('/^-?[0-9]+$/', $f['floor'])
+            ? $f : ['building' => '', 'floor' => ''] + $f, $facilities),
     ];
 }

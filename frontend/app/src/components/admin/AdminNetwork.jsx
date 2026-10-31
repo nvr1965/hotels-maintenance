@@ -101,7 +101,7 @@ export default function AdminNetwork({ lang, onOpenHotel }) {
         const d = await post('hotel_save', form);
         if (!d.success) return;
         setMsg({ ok: true, text: form.id ? t.saved : [d.copied ? t.created_copied(d.copied.asset_dictionary, d.copied.room_checklist_dict, d.copied.routine_tasks) : t.created,
-            d.built ? t.created_built(d.built.rooms, d.built.common) : ''].filter(Boolean).join('. ') });
+            d.built ? t.created_built_full(d.built.rooms, d.built.common, d.built.facilities) : ''].filter(Boolean).join('. ') });
         setForm(null);
         await loadOrg();
         // Правили текущий отель — сразу применить новое оформление

@@ -3,7 +3,8 @@ import { uiText } from '../i18n';
 import './mgr/mgr.css';
 
 // Пошаговый выбор объекта кнопками: здание → этаж → объекты/номера → сам объект.
-// locations приходят из get_assets.php: { id, name, short, building, floor, is_room }
+// Зоны отеля (ресторан, бар, бассейн…) — ещё и отдельной строкой сверху, сразу одной кнопкой.
+// locations приходят из get_assets.php: { id, name, short, building, floor, is_room, is_facility, icon }
 
 
 // Естественная сортировка: «2» < «10», «-1» < «0», буквы по алфавиту
@@ -34,11 +35,16 @@ export default function AssetPicker({ locations, value, onChange, lang }) {
     const norm = (v) => (v === null || v === undefined ? '' : String(v));
     const isRoom = (l) => Number(l.is_room) === 1;
 
-    const buildings = useMemo(() => uniqueSorted(locations.map(l => norm(l.building))), [locations]);
+    // Место без корпуса, где только зоны (бассейн, парковка…), выбирается строкой зон, отдельным «корпусом» не показывается
+    const buildings = useMemo(() => uniqueSorted(locations
+        .filter(l => norm(l.building) !== '' || !locations.every(x => norm(x.building) !== '' || Number(x.is_facility) === 1))
+        .map(l => norm(l.building))), [locations]);
     const inBuilding = useMemo(() => locations.filter(l => norm(l.building) === building), [locations, building]);
     const floors = useMemo(() => uniqueSorted(inBuilding.map(l => norm(l.floor))), [inBuilding]);
     const onFloor = useMemo(() => inBuilding.filter(l => norm(l.floor) === floor), [inBuilding, floor]);
     const roomCount = onFloor.filter(isRoom).length;
+    const areas = useMemo(() => locations.filter(l => Number(l.is_facility) === 1)
+        .sort((a, b) => String(a.short).localeCompare(String(b.short), undefined, { numeric: true })), [locations]);
     const objectCount = onFloor.length - roomCount;
 
     const options = useMemo(() => {
@@ -55,6 +61,8 @@ export default function AssetPicker({ locations, value, onChange, lang }) {
         if (!value) return;
         const loc = locations.find(l => String(l.id) === String(value));
         if (!loc) return;
+        // Зона выбрана строкой зон — шаги «корпус → этаж» не раскрываем
+        if (Number(loc.is_facility) === 1) { setBuilding(null); setFloor(null); setKind(null); return; }
         setBuilding(norm(loc.building));
         setFloor(norm(loc.floor));
         setKind(isRoom(loc) ? 'room' : 'object');
@@ -74,12 +82,25 @@ export default function AssetPicker({ locations, value, onChange, lang }) {
     const pickKind = (k) => { setKind(k); onChange(''); };
 
     const show = (v) => (v === '' ? t.none : v);
-    const chipLabel = (l) => isRoom(l) ? l.short : (l.short || l.name);
-    const placeLabel = (l) => isRoom(l) ? `${t.room} ${l.short}` : (l.short || l.name);
+    const icon = (l) => (l.icon ? l.icon + ' ' : '');
+    const chipLabel = (l) => isRoom(l) ? l.short : icon(l) + (l.short || l.name);
+    const placeLabel = (l) => isRoom(l) ? `${t.room} ${l.short}` : icon(l) + (l.short || l.name);
     const picked = value ? locations.find(l => String(l.id) === String(value)) : null;
 
     return (
         <div className="mgr-pick">
+            {areas.length > 0 && (
+                <div className="mgr-lab">{t.areas}
+                    <div className="mgr-chips">
+                        {areas.map(l => (
+                            <Chip key={l.id} on={String(value) === String(l.id)}
+                                onClick={() => onChange(String(value) === String(l.id) ? '' : String(l.id))}>{chipLabel(l)}</Chip>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {areas.length > 0 && <div className="mgr-hint">{t.or_place}</div>}
+
             <div className="mgr-lab">{t.building}
                 <div className="mgr-chips">
                     {buildings.map(b => <Chip key={b || '_'} on={building === b} onClick={() => pickBuilding(b)}>{show(b)}</Chip>)}
@@ -119,7 +140,9 @@ export default function AssetPicker({ locations, value, onChange, lang }) {
             {picked && (
                 <div className="mgr-picked">
                     <div className="mgr-place">{placeLabel(picked)}</div>
-                    <small>{t.building} <bdi>{show(norm(picked.building))}</bdi> · {t.floor} <bdi>{show(norm(picked.floor))}</bdi></small>
+                    {!(Number(picked.is_facility) === 1 && norm(picked.building) === '') && (
+                        <small>{t.building} <bdi>{show(norm(picked.building))}</bdi> · {t.floor} <bdi>{show(norm(picked.floor))}</bdi></small>
+                    )}
                 </div>
             )}
         </div>

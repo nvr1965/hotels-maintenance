@@ -4,7 +4,9 @@
  * (asset_dictionary.term_key), название на языке берётся оттуда.
  *
  * GET  ?action=list&lang=xx
- * POST ?action=save      {id?, building, floor, asset_key}
+ * POST ?action=save      {id?, building, floor, asset_key, facility?: {key?, name?, icon?}}
+ *                        facility — зона отеля (ресторан, бар, бассейн…): key из каталога или своё name;
+ *                        название заводится в справочнике как зона, asset_key берётся оттуда
  * POST ?action=delete    {id, force?}
  * POST ?action=generate  {building, floor, from, to}   — номера с from по to, существующие пропускаются
  */
@@ -40,7 +42,7 @@ if ($action === 'list') {
     $usage = db_exec("SELECT asset_id, COUNT(*) FROM maintenance_tasks WHERE hotel_id = ? AND asset_id IS NOT NULL GROUP BY asset_id", [$hid])
         ->fetchAll(PDO::FETCH_KEY_PAIR);
     $items = [];
-    foreach (admin_fetch_all("SELECT a.id, a.building, a.floor, a.asset_key, d.names
+    foreach (admin_fetch_all("SELECT a.id, a.building, a.floor, a.asset_key, d.names, d.kind, d.icon
                               FROM hotel_assets a
                               LEFT JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND d.term_key = a.asset_key
                               WHERE a.hotel_id = ?
@@ -54,15 +56,18 @@ if ($action === 'list') {
             'asset_key' => (string)$r['asset_key'],
             'name' => ($r['names'] !== null ? i18n_pick($r['names'], $lang) : '') ?: (string)$r['asset_key'],
             'is_room' => preg_match('/^[0-9]+$/', (string)$r['asset_key']) ? 1 : 0,
+            'is_facility' => $r['kind'] === 'facility' ? 1 : 0,
+            'icon' => $r['kind'] === 'facility' ? ($r['icon'] ?: '📍') : null,
             'usage' => (int)($usage[$r['id']] ?? 0),
         ];
     }
     $terms = [];
-    foreach (admin_fetch_all("SELECT term_key, names FROM asset_dictionary WHERE hotel_id = ?", [$hid]) as $t) {
-        $terms[] = ['key' => $t['term_key'], 'name' => i18n_pick($t['names'], $lang) ?: $t['term_key']];
+    foreach (admin_fetch_all("SELECT term_key, names, kind, icon FROM asset_dictionary WHERE hotel_id = ?", [$hid]) as $t) {
+        $terms[] = ['key' => $t['term_key'], 'name' => i18n_pick($t['names'], $lang) ?: $t['term_key'],
+                    'is_facility' => $t['kind'] === 'facility' ? 1 : 0, 'icon' => $t['kind'] === 'facility' ? ($t['icon'] ?: '📍') : null];
     }
     usort($terms, fn($a, $b) => strnatcasecmp($a['name'], $b['name']));
-    admin_ok(['items' => $items, 'terms' => $terms]);
+    admin_ok(['items' => $items, 'terms' => $terms, 'catalog' => facility_catalog($lang), 'icons' => FACILITY_ICONS]);
 }
 
 $in = admin_input();
@@ -73,6 +78,33 @@ if ($action === 'save') {
     $building = $clean($in['building'] ?? '');
     $floor = $clean($in['floor'] ?? '');
     $key = $clean($in['asset_key'] ?? '');
+    $fac = is_array($in['facility'] ?? null) ? $in['facility'] : null;
+    $newTerm = false;
+    if ($fac) {
+        $icon = facility_icon($fac['icon'] ?? null);
+        $cat = facility_find((string)($fac['key'] ?? ''));
+        if ($cat) {
+            $key = $cat['key'];
+            $names = $cat['names'];
+            $icon = $icon ?? $cat['icon'];
+        } else {
+            $name = clean_text($fac['name'] ?? '', 80);
+            $key = (string)($fac['key'] ?? '');
+            $existing = $key !== '' ? db_one("SELECT names FROM asset_dictionary WHERE hotel_id = ? AND term_key = ?", [$hid, $key]) : null;
+            if ($existing) {
+                $names = db_json($existing['names']);
+            } else {
+                if ($name === '') admin_fail('key_required');
+                $src = app_normalize_lang($me['lang']);
+                $names = i18n_complete([$src => $name], ['en'], $src);
+                $key = $names['en'] ?? $name;
+            }
+        }
+        if (preg_match('/^[0-9]+$/', $key)) admin_fail('bad_facility');
+        $newTerm = !db_value("SELECT 1 FROM asset_dictionary WHERE hotel_id = ? AND term_key = ?", [$hid, $key]);
+        facility_ensure($hid, $key, $names, $icon ?? '📍');
+        if ($icon !== null) db_exec("UPDATE asset_dictionary SET icon = ? WHERE hotel_id = ? AND term_key = ?", [$icon, $hid, $key]);
+    }
     if ($key === '') admin_fail('key_required');
     if (asset_exists($building, $floor, $key, $id)) admin_fail('asset_exists');
 
@@ -80,12 +112,15 @@ if ($action === 'save') {
         $newId = (int)db_value("INSERT INTO hotel_assets (hotel_id, building, floor, asset_key) VALUES (?, ?, ?, ?) RETURNING id",
             [$hid, $building, $floor, $key]);
         admin_audit($me, 'insert', 'hotel_assets', $newId, null, asset_load($newId));
+        // Новое название зоны дописывается на остальные языки отеля уже после ответа
+        if ($newTerm) api_ok_then(['id' => $newId], fn() => i18n_fill_hotel($hid, app_hotel_langs($me['hotel'])));
         admin_ok(['id' => $newId]);
     }
     $before = asset_load($id);
     if (!$before) admin_fail('not_found');
     admin_exec("UPDATE hotel_assets SET building = ?, floor = ?, asset_key = ? WHERE id = ? AND hotel_id = ?", [$building, $floor, $key, $id, $hid]);
     admin_audit($me, 'update', 'hotel_assets', $id, $before, asset_load($id));
+    if ($newTerm) api_ok_then([], fn() => i18n_fill_hotel($hid, app_hotel_langs($me['hotel'])));
     admin_ok();
 }
 

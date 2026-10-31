@@ -18,7 +18,7 @@ foreach (db_all("SELECT id, names FROM room_checklist_dict WHERE hotel_id = ? OR
 
 // 2. Открытые заявки отеля с именем автора
 $rows = db_all("SELECT t.id, t.task_type, t.status, t.created_at, t.media, t.description, t.description_lang,
-                       d.names AS loc_names, a.asset_key, a.building, a.floor, w.display_name AS author_name
+                       d.names AS loc_names, d.kind AS loc_kind, d.icon AS loc_icon, a.asset_key, a.building, a.floor, w.display_name AS author_name
                 FROM maintenance_tasks t
                 LEFT JOIN hotel_assets a ON t.asset_id = a.id
                 LEFT JOIN asset_dictionary d ON d.hotel_id = a.hotel_id AND a.asset_key = d.term_key
@@ -46,7 +46,7 @@ foreach ($rows as $row) {
     } else {
         $urgent[] = $item + [
             'asset_key' => $assetKey,
-            'location' => ($row['loc_names'] !== null ? i18n_pick($row['loc_names'], $lang) : '') ?: $assetKey,
+            'location' => ($row['loc_kind'] === 'facility' ? ($row['loc_icon'] ?: '📍') . ' ' : '') . ($row['loc_names'] !== null ? i18n_pick($row['loc_names'], $lang) : '') ?: $assetKey,
             'author_name' => $row['author_name'] ?? '',
             'media' => is_array($media) ? $media : [],
         ];

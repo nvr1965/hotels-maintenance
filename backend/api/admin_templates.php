@@ -7,6 +7,7 @@
  * POST ?action=delete      {id}
  * GET  ?action=from_hotel&hotel_id=          — структура готового отеля (чтобы сохранить как шаблон)
  * POST ?action=preview     {structure}        — сколько номеров и объектов получится, первые номера каждого корпуса
+ * GET  ?action=catalog&lang=xx               — каталог зон отеля (ресторан, бар, бассейн…) и значки
  */
 require_once __DIR__ . '/../core/api.php';
 
@@ -14,7 +15,7 @@ $me = app_current();
 if (!$me) app_json_fail(401, 'auth_required');
 if ($me['is_superadmin'] !== 1) app_json_fail(403, 'forbidden');
 $action = $_GET['action'] ?? 'list';
-if (!in_array($action, ['list', 'from_hotel'], true)) api_require_post();
+if (!in_array($action, ['list', 'from_hotel', 'catalog'], true)) api_require_post();
 $in = api_input();
 
 function tpl_summary(array $s): array
@@ -26,7 +27,9 @@ function tpl_summary(array $s): array
         $keys = array_column(array_filter($rooms, fn($a) => $a[0] === $b['name']), 2);
         $sample[] = ['building' => $b['name'], 'first' => array_slice($keys, 0, 3), 'last' => $keys ? end($keys) : null];
     }
-    return ['buildings' => count($s['buildings']), 'rooms' => count($rooms), 'common' => count($assets) - count($rooms), 'sample' => $sample];
+    $fac = count($s['facilities'] ?? []);
+    return ['buildings' => count($s['buildings']), 'rooms' => count($rooms), 'common' => count($assets) - count($rooms) - $fac,
+            'facilities' => $fac, 'sample' => $sample];
 }
 
 if ($action === 'list') {
@@ -37,6 +40,10 @@ if ($action === 'list') {
     }
     $hotels = array_map(fn($h) => ['id' => (int)$h['id'], 'name' => $h['name']], db_all("SELECT id, name FROM hotels ORDER BY name"));
     api_ok(['items' => $items, 'hotels' => $hotels]);
+}
+
+if ($action === 'catalog') {
+    api_ok(['catalog' => facility_catalog(api_lang($me)), 'icons' => FACILITY_ICONS]);
 }
 
 if ($action === 'preview') {
@@ -57,14 +64,7 @@ if ($action === 'save') {
     $name = clean_text($in['name'] ?? '', 100);
     if ($name === '') api_fail('name_required');
     $st = tpl_normalize($in['structure'] ?? null);
-    // У общего объекта нужно английское название: по нему объект связан со справочником названий отеля
-    foreach ($st['common'] as &$c) {
-        if (!isset($c['names']['en'])) {
-            $src = isset($c['names'][$me['lang']]) ? $me['lang'] : array_key_first($c['names']);
-            $c['names'] = i18n_complete($c['names'], ['en'], $src);
-        }
-    }
-    unset($c);
+    $st = tpl_with_en($st, $me['lang']);
     $s = json_encode($st, JSON_UNESCAPED_UNICODE);
     if ($before) {
         db_exec("UPDATE hotel_templates SET name = ?, structure = ?, updated_at = now() WHERE id = ?", [$name, $s, $id]);

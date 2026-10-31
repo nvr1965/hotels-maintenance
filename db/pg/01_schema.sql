@@ -405,4 +405,11 @@ CREATE TABLE IF NOT EXISTS translator_usage (
 );
 DELETE FROM translator_usage WHERE day < CURRENT_DATE - 90;
 
+-- ---------------------------------------------------------------- зоны отеля
+-- Зона — отдельное место отеля: ресторан, бар, бассейн, спа, парковка… (каталог — backend/core/facilities.php).
+-- Как и общий объект, это название из справочника, но стоит в одном месте (корпус и этаж или территория)
+-- и показывается со значком отдельной группой.
+ALTER TABLE asset_dictionary ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'object' CHECK (kind IN ('object', 'facility'));
+ALTER TABLE asset_dictionary ADD COLUMN IF NOT EXISTS icon text;
+
 COMMIT;

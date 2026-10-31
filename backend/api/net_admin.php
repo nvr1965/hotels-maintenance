@@ -81,8 +81,8 @@ function net_copy_dictionaries(int $fromHotel, int $toHotel): array
     $deps = dep_copy($fromHotel, $toHotel);
     $n['hotel_departments'] = count($deps);
     $depCase = $deps ? 'CASE department_id ' . implode(' ', array_map(fn($o, $nw) => "WHEN $o THEN $nw", array_keys($deps), $deps)) . ' END' : 'NULL';
-    $n['asset_dictionary'] = db_exec("INSERT INTO asset_dictionary (hotel_id, term_key, names)
-             SELECT ?, term_key, names FROM asset_dictionary WHERE hotel_id = ?", [$toHotel, $fromHotel])->rowCount();
+    $n['asset_dictionary'] = db_exec("INSERT INTO asset_dictionary (hotel_id, term_key, names, kind, icon)
+             SELECT ?, term_key, names, kind, icon FROM asset_dictionary WHERE hotel_id = ?", [$toHotel, $fromHotel])->rowCount();
     $n['room_checklist_dict'] = db_exec("INSERT INTO room_checklist_dict (hotel_id, names, sort_order, department_id)
              SELECT ?, names, sort_order, $depCase FROM room_checklist_dict WHERE hotel_id = ? ORDER BY sort_order, id",
         [$toHotel, $fromHotel])->rowCount();
@@ -207,7 +207,7 @@ if ($action === 'hotel_save') {
         $tpl = null;
         if (is_array($in['structure'] ?? null)) {
             if ($me['is_superadmin'] !== 1) api_fail('forbidden', [], 403);
-            $tpl = tpl_normalize($in['structure']);
+            $tpl = tpl_with_en(tpl_normalize($in['structure']), $me['lang']);
         } elseif ($tplId > 0) {
             if ($me['is_superadmin'] !== 1) api_fail('forbidden', [], 403);
             $row = db_one("SELECT structure FROM hotel_templates WHERE id = ?", [$tplId]);
